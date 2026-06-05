@@ -1,8 +1,20 @@
-# TradeSkillMaster — WotLK 3.3.5a backport
+<p align="center">
+  <b><span style="color:red">⚠ WARNING: This addon is in BETA — may contain bugs and incomplete features ⚠</span></b>
+</p>
+
+<br>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/TSM-v4.14.66-ff8800?style=for-the-badge&logo=appveyor">
+  <img src="https://img.shields.io/badge/WoK-3.3.5a-blue?style=for-the-badge">
+  <img src="https://img.shields.io/badge/status-beta-red?style=for-the-badge">
+</p>
+
+<h1 align="center">TradeSkillMaster — WotLK 3.3.5a backport</h1>
 
 <p align="center">
   <b>The complete TradeSkillMaster suite for World of Warcraft 3.3.5a (WotLK).</b><br>
-  <i>Backport of modern TradeSkillMaster to the WoW 3.3.5a client.</i>
+  <i>Backport of TradeSkillMaster v4.14.66 to the WoW 3.3.5a client.</i>
 </p>
 
 <p align="center">
@@ -25,7 +37,7 @@
 
 **TradeSkillMaster (TSM)** is an all-in-one suite for the in-game economy:
 auction house scanning, bulk posting, crafting management, mailing, group-based
-automation, and more. This repository is a backport of modern TradeSkillMaster
+automation, and more. This repository is a **backport of TSM v4.14.66**
 to the **WoW 3.3.5a (WotLK)** client.
 
 <a name="modules"></a>
@@ -126,7 +138,7 @@ based on your groups, and empty your mailbox with a single click.
 **TradeSkillMaster (TSM)** — это комплексный набор инструментов для внутриигровой
 экономики: сканирование аукциона, массовое выставление лотов, управление
 профессиями, рассылка почты, автоматизация на основе групп и многое другое.
-Этот репозиторий — бэкпорт современного TradeSkillMaster под клиент
+Этот репозиторий — **бэкпорт TSM v4.14.66** под клиент
 **WoW 3.3.5a (WotLK)**.
 
 <a name="модули"></a>
