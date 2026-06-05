@@ -1,0 +1,56 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="Source\Core.lua" />
+
+    <Script file="Source\Item\BonusIds.lua" />
+    <Script file="Source\Item\ItemString.lua" />
+    <Script file="Source\Item\Conversion.lua" />
+    <Script file="Source\Item\Classes\ItemInfoSerializer.lua" />
+    <Script file="Source\Item\ItemInfoCache.lua" />
+
+    <Script file="Source\Crafting\CraftString.lua" />
+    <Script file="Source\Crafting\MatString.lua" />
+    <Script file="Source\Crafting\RecipeString.lua" />
+
+    <Script file="Source\Ledger\GoldLog.lua" />
+
+    <Script file="Source\CustomString\Classes\Types.lua" />
+    <Script file="Source\CustomString\Classes\Utils.lua" />
+    <Script file="Source\CustomString\Classes\Sources.lua" />
+    <Script file="Source\CustomString\Classes\Tokenizer.lua" />
+    <Script file="Source\CustomString\Classes\TokenProcessor.lua" />
+    <Script file="Source\CustomString\Classes\Optimizer.lua" />
+    <Script file="Source\CustomString\Classes\AST.lua" />
+    <Script file="Source\CustomString\Classes\CodeGen.lua" />
+    <Script file="Source\CustomString\Classes\Object.lua" />
+    <Script file="Source\CustomString\CustomString.lua" />
+
+    <Script file="Source\Operation\Classes\Util.lua" />
+    <Script file="Source\Operation\Classes\Type.lua" />
+    <Script file="Source\Operation\Operation.lua" />
+
+    <Script file="Source\Group\Classes\Path.lua" />
+    <Script file="Source\Group\Classes\ItemMap.lua" />
+    <Script file="Source\Group\Classes\ItemDB.lua" />
+    <Script file="Source\Group\Group.lua" />
+
+    <Script file="Source\GroupOperation\GroupOperation.lua" />
+
+    <Script file="Source\ImportExport\GroupImport.lua" />
+    <Script file="Source\ImportExport\GroupExport.lua" />
+
+    <Script file="Source\Threading\Classes\EventWaiter.lua" />
+    <Script file="Source\Threading\Classes\FunctionWaiter.lua" />
+    <Script file="Source\Threading\Classes\FutureWaiter.lua" />
+    <Script file="Source\Threading\Classes\Scheduler.lua" />
+    <Script file="Source\Threading\Classes\Thread.lua" />
+    <Script file="Source\Threading\Threading.lua" />
+
+    <Script file="Source\Settings\Classes\Util.lua" />
+    <Script file="Source\Settings\Classes\Types.lua" />
+    <Script file="Source\Settings\Classes\Migration.lua" />
+    <Script file="Source\Settings\Classes\Schema.lua" />
+    <Script file="Source\Settings\Classes\View.lua" />
+    <Script file="Source\Settings\Classes\DB.lua" />
+    <Script file="Source\Settings\Settings.lua" />
+</Ui>

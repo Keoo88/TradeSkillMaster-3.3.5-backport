@@ -1,0 +1,154 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="Source\Core.lua" />
+
+    <Script file="Source\Tooltip\Tooltip.lua" />
+
+    <Script file="Source\Util\UIUtils.lua" />
+    <Script file="Source\Util\WidgetExtensions.lua" />
+    <Script file="Source\Util\Rectangle.lua" />
+    <Script file="Source\Util\Scrollbar.lua" />
+    <Script file="Source\Util\UIElements.lua" />
+    <Script file="Source\Util\ItemLinked.lua" />
+    <Script file="Source\Util\Errors.lua" />
+    <Script file="Source\Util\DragContext.lua" />
+    <Script file="Source\Util\NineSlice.lua" />
+    <Script file="Source\Util\CustomStringFormat.lua" />
+    <Script file="Source\Util\MenuDialogData.lua" />
+
+    <Script file="Source\Components\Core\Element.lua" />
+    <Script file="Source\Components\Core\Spacer.lua" />
+
+    <Script file="Source\Components\Display\Text.lua" />
+    <Script file="Source\Components\Display\Texture.lua" />
+    <Script file="Source\Components\Display\HorizontalLine.lua" />
+    <Script file="Source\Components\Display\VerticalLine.lua" />
+    <Script file="Source\Components\Display\Graph.lua" />
+    <Script file="Source\Components\Display\ProgressBar.lua" />
+
+    <Script file="Source\Components\Controls\ActionButton.lua" />
+    <Script file="Source\Components\Controls\SecureMacroActionButton.lua" />
+    <Script file="Source\Components\Controls\Button.lua" />
+    <Script file="Source\Components\Controls\Checkbox.lua" />
+    <Script file="Source\Components\Controls\EditableText.lua" />
+    <Script file="Source\Components\Controls\RangeInput.lua" />
+    <Script file="Source\Components\Controls\Toggle.lua" />
+    <Script file="Source\Components\Controls\ToggleYesNo.lua" />
+    <Script file="Source\Components\Controls\SyntaxInput.lua" />
+    <Script file="Source\Components\Controls\ItemButton.lua" />
+    <Script file="Source\Components\Controls\BaseInput.lua" />
+    <Script file="Source\Components\Controls\Input.lua" />
+    <Script file="Source\Components\Controls\MultiLineInput.lua" />
+    <Script file="Source\Components\Controls\CustomStringSingleLineInput.lua" />
+    <Script file="Source\Components\Controls\FlashingButton.lua" />
+
+    <Script file="Source\Components\Containers\Container.lua" />
+    <Script file="Source\Components\Containers\ViewContainer.lua" />
+    <Script file="Source\Components\Containers\TabGroup.lua" />
+    <Script file="Source\Components\Containers\Frame.lua" />
+    <Script file="Source\Components\Containers\ScrollFrame.lua" />
+    <Script file="Source\Components\Containers\CollapsibleContainer.lua" />
+    <Script file="Source\Components\Containers\DividedContainer.lua" />
+
+    <Script file="Source\Components\Dialog\CustomStringDialog.lua" />
+    <Script file="Source\Components\Dialog\MenuDialog.lua" />
+
+    <Script file="Source\Components\List\ListRow.lua" />
+    <Script file="Source\Components\List\List.lua" />
+    <Script file="Source\Components\List\SelectionList.lua" />
+    <Script file="Source\Components\List\ItemList.lua" />
+    <Script file="Source\Components\List\CraftingMatList.lua" />
+    <Script file="Source\Components\List\SearchList.lua" />
+    <Script file="Source\Components\List\SimpleItemList.lua" />
+    <Script file="Source\Components\List\ScrollTable.lua" />
+
+    <Script file="Source\Components\Dialog\MenuDialogList.lua" />
+
+    <Script file="Source\Group\GroupTree.lua" />
+    <Script file="Source\Group\SelectionGroupTree.lua" />
+    <Script file="Source\Group\ApplicationGroupTree.lua" />
+    <Script file="Source\Group\ManagementGroupTree.lua" />
+    <Script file="Source\Group\GroupSelector.lua" />
+    <Script file="Source\Group\OperationTree.lua" />
+    <Script file="Source\Group\OperationSummaryScrollTable.lua" />
+    <Script file="Source\Group\OperationsList.lua" />
+    <Script file="Source\Group\ApplicationGroupTreeWithControls.lua" />
+
+    <Script file="Source\Display\PlayerGoldText.lua" />
+
+    <Script file="Source\Frames\PopupFrame.lua" />
+    <Script file="Source\Frames\ApplicationFrame.lua" />
+    <Script file="Source\Frames\LargeApplicationFrame.lua" />
+    <Script file="Source\Frames\OverlayApplicationFrame.lua" />
+
+    <Script file="Source\Components\Dropdown\DropdownList.lua" />
+    <Script file="Source\Components\Dropdown\DropdownDialog.lua" />
+    <Script file="Source\Components\Dropdown\BaseDropdown.lua" />
+    <Script file="Source\Components\Dropdown\ListDropdown.lua" />
+    <Script file="Source\Components\Dropdown\SelectionDropdown.lua" />
+    <Script file="Source\Components\Dropdown\MultiselectionDropdown.lua" />
+
+    <Script file="Source\AuctionHouse\AuctionHouseUIUtils.lua" />
+    <Script file="Source\AuctionHouse\CommodityList.lua" />
+    <Script file="Source\AuctionHouse\AuctioningBagScrollTable.lua" />
+    <Script file="Source\AuctionHouse\AuctioningLogScrollTable.lua" />
+    <Script file="Source\AuctionHouse\AuctionScrollTable.lua" />
+    <Script file="Source\AuctionHouse\MyAuctionsScrollTable.lua" />
+    <Script file="Source\AuctionHouse\SniperScrollTable.lua" />
+    <Script file="Source\AuctionHouse\PostingPriceFields.lua" />
+    <Script file="Source\AuctionHouse\AuctioningEditDialog.lua" />
+    <Script file="Source\AuctionHouse\SavedSearchEditDialog.lua" />
+    <Script file="Source\AuctionHouse\ShoppingPostDialogPriceView.lua" />
+    <Script file="Source\AuctionHouse\ShoppingPostDialog.lua" />
+    <Script file="Source\AuctionHouse\ShoppingAdvancedSearch.lua" />
+    <Script file="Source\AuctionHouse\AuctionCommodityBuyConfirmationDialog.lua" />
+    <Script file="Source\AuctionHouse\AuctionItemBuyConfirmationDialog.lua" />
+    <Script file="Source\AuctionHouse\AuctionBuyScan.lua" />
+
+    <Script file="Source\Crafting\CraftingUIUtils.lua" />
+    <Script file="Source\Crafting\CraftDetails.lua" />
+    <Script file="Source\Crafting\CraftTierButton.lua" />
+    <Script file="Source\Crafting\CraftTierDialog.lua" />
+    <Script file="Source\Crafting\ItemSelector.lua" />
+    <Script file="Source\Crafting\OptionalMatsRow.lua" />
+    <Script file="Source\Crafting\CraftingQueueEditDialog.lua" />
+    <Script file="Source\Crafting\CraftingQueueList.lua" />
+    <Script file="Source\Crafting\CraftsScrollTable.lua" />
+    <Script file="Source\Crafting\MatsScrollTable.lua" />
+    <Script file="Source\Crafting\GatheringScrollTable.lua" />
+    <Script file="Source\Crafting\IgnoredCooldownList.lua" />
+    <Script file="Source\Crafting\ProfessionScrollTable.lua" />
+    <Script file="Source\Crafting\CraftingRestockDialog.lua" />
+
+    <Script file="Source\Debug\DatabaseBrowseScrollTable.lua" />
+    <Script file="Source\Debug\DatabaseStructureScrollTable.lua" />
+    <Script file="Source\Debug\ErrorFrame.lua" />
+
+    <Script file="Source\Destroying\DestroyingScrollTable.lua" />
+
+    <Script file="Source\Ledger\LedgerAuctionsScrollTable.lua" />
+    <Script file="Source\Ledger\LedgerDetailScrollTable.lua" />
+    <Script file="Source\Ledger\LedgerInventoryScrollTable.lua" />
+    <Script file="Source\Ledger\LedgerOtherScrollTable.lua" />
+    <Script file="Source\Ledger\LedgerResaleScrollTable.lua" />
+    <Script file="Source\Ledger\LedgerTransactionsScrollTable.lua" />
+
+    <Script file="Source\Operations\OperationLinkDialog.lua" />
+    <Script file="Source\Operations\OperationLinkButton.lua" />
+    <Script file="Source\Operations\OperationLinkedSettingLine.lua" />
+    <Script file="Source\Operations\OperationGroupLine.lua" />
+    <Script file="Source\Operations\OperationCollapsibleContainer.lua" />
+
+    <Script file="Source\Mail\MailItemsList.lua" />
+    <Script file="Source\Mail\MailsScrollTable.lua" />
+    <Script file="Source\Mail\SendItemsList.lua" />
+    <Script file="Source\Mail\MailContactsDialog.lua" />
+
+    <Script file="Source\Vendor\VendorUIUtils.lua" />
+    <Script file="Source\Vendor\VendorBuyScrollTable.lua" />
+    <Script file="Source\Vendor\VendorBuybackScrollTable.lua" />
+    <Script file="Source\Vendor\VendorQuantityDialog.lua" />
+    <Script file="Source\Vendor\VendorSellScrollTable.lua" />
+
+    <Script file="Source\Settings\SoundDropdown.lua" />
+</Ui>

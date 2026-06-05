@@ -1,0 +1,3 @@
+ignore:
+  - Test.lua
+  - README.md

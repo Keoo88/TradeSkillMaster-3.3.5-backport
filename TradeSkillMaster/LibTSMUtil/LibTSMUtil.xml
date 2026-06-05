@@ -1,0 +1,54 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="Source\Core.lua" />
+
+    <Script file="Source\Lua\DebugStack.lua" />
+    <Script file="Source\Lua\Math.lua" />
+    <Script file="Source\Lua\Table.lua" />
+    <Script file="Source\Lua\Vararg.lua" />
+    <Script file="Source\Lua\String.lua" />
+
+    <Script file="Source\BaseType\EnumType.lua" />
+    <Script file="Source\BaseType\Future.lua" />
+    <Script file="Source\BaseType\Iterator.lua" />
+    <Script file="Source\BaseType\LongString.lua" />
+    <Script file="Source\BaseType\NamedTupleList.lua" />
+    <Script file="Source\BaseType\ObjectPool.lua" />
+    <Script file="Source\BaseType\SmartMap.lua" />
+    <Script file="Source\BaseType\TempTable.lua" />
+    <Script file="Source\BaseType\Tree.lua" />
+
+    <Script file="Source\Util\BinarySearch.lua" />
+    <Script file="Source\Util\Hash.lua" />
+    <Script file="Source\Util\Log.lua" />
+    <Script file="Source\Util\Analytics.lua" />
+
+    <Script file="Source\Format\CSV.lua" />
+    <Script file="Source\Format\JSON.lua" />
+    <Script file="Source\Format\MoneyFormatter.lua" />
+    <Script file="Source\Format\StringBuilder.lua" />
+
+    <Script file="Source\FSM\Type\State.lua" />
+    <Script file="Source\FSM\Type\Object.lua" />
+    <Script file="Source\FSM\FSM.lua" />
+
+    <Script file="Source\Reactive\Type\Publisher.lua" />
+    <Script file="Source\Reactive\Type\Expression.lua" />
+    <Script file="Source\Reactive\Type\State.lua" />
+    <Script file="Source\Reactive\Type\StateSchema.lua" />
+    <Script file="Source\Reactive\Type\Stream.lua" />
+    <Script file="Source\Reactive\Reactive.lua" />
+
+    <Script file="Source\Database\Util.lua" />
+    <Script file="Source\Database\Type\Row.lua" />
+    <Script file="Source\Database\Type\QueryClause.lua" />
+    <Script file="Source\Database\Type\Query.lua" />
+    <Script file="Source\Database\Type\Table.lua" />
+    <Script file="Source\Database\Type\Schema.lua" />
+    <Script file="Source\Database\Database.lua" />
+
+    <Script file="Source\UI\HSLuv.lua" />
+    <Script file="Source\UI\Color.lua" />
+    <Script file="Source\UI\Money.lua" />
+    <Script file="Source\UI\UIManager.lua" />
+</Ui>

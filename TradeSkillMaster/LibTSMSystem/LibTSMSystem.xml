@@ -1,0 +1,15 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="Source\Core.lua" />
+
+    <Script file="Source\Operation\Classes\Util.lua" />
+    <Script file="Source\Operation\AuctioningOperation.lua" />
+    <Script file="Source\Operation\CraftingOperation.lua" />
+    <Script file="Source\Operation\MailingOperation.lua" />
+    <Script file="Source\Operation\ShoppingOperation.lua" />
+    <Script file="Source\Operation\SniperOperation.lua" />
+    <Script file="Source\Operation\VendoringOperation.lua" />
+    <Script file="Source\Operation\WarehousingOperation.lua" />
+
+    <Script file="Source\AddonSettings\Schema.lua" />
+</Ui>

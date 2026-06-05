@@ -1,0 +1,45 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="Source\Core.lua" />
+
+    <Script file="Source\Util\Lifecycle.lua" />
+    <Script file="Source\Util\ClientInfo.lua" />
+    <Script file="Source\Util\CharacterInfo.lua" />
+    <Script file="Source\Util\Debug.lua" />
+    <Script file="Source\Util\SessionInfo.lua" />
+    <Script file="Source\Util\ItemClass.lua" />
+
+    <Script file="Source\UI\StaticPopupDialog.lua" />
+    <Script file="Source\UI\FontObject.lua" />
+    <Script file="Source\UI\ExtraTooltip.lua" />
+    <Script file="Source\UI\SoundAlert.lua" />
+    <Script file="Source\UI\SlashCommandList.lua" />
+
+    <Script file="Source\Service\Event.lua" />
+
+    <Script file="Source\Type\SlotId.lua" />
+
+    <Script file="Source\API\Addon.lua" />
+    <Script file="Source\API\ChatFrame.lua" />
+    <Script file="Source\API\Container.lua" />
+    <Script file="Source\API\Currency.lua" />
+    <Script file="Source\API\Guild.lua" />
+    <Script file="Source\API\Inbox.lua" />
+    <Script file="Source\API\Item.lua" />
+    <Script file="Source\API\Merchant.lua" />
+    <Script file="Source\API\ScriptWrapper.lua" />
+    <Script file="Source\API\Spell.lua" />
+    <Script file="Source\API\TradeSkill.lua" />
+
+    <Script file="Source\Service\DelayTimer.lua" />
+    <Script file="Source\Service\ChatEvent.lua" />
+    <Script file="Source\Service\ModifierKey.lua" />
+    <Script file="Source\Service\TooltipScanning.lua" />
+    <Script file="Source\Service\TooltipWrapper.lua" />
+
+    <Script file="Source\UI\DefaultUI.lua" />
+
+    <Script file="Source\API\AuctionHouse.lua" />
+    <Script file="Source\API\AuctionHouseWrapper.lua" />
+    <Script file="Source\API\FriendList.lua" />
+</Ui>

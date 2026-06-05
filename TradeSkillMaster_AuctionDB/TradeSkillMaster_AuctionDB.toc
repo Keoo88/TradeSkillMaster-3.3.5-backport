@@ -1,0 +1,9 @@
+## Interface: 30300
+## Title: |cff00fe00TradeSkillMaster_AuctionDB|r
+## Notes: Local auction scan database for TSM on 3.3.5a
+## Author: TradeSkillMaster Team
+## Version: v4.14.66-wrath
+## SavedVariables: TSM_AuctionDB
+## Dependencies: TradeSkillMaster
+
+Core.lua

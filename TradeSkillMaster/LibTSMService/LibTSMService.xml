@@ -1,0 +1,70 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="Source\Core.lua" />
+
+    <Script file="Source\Debug\ErrorHandler.lua" />
+
+    <Script file="Source\UI\Theme.lua" />
+    <Script file="Source\UI\ChatMessage.lua" />
+
+    <Script file="Source\Vendor\Classes\Buy.lua" />
+    <Script file="Source\Vendor\Classes\BuyScanner.lua" />
+    <Script file="Source\Vendor\Classes\BuybackScanner.lua" />
+    <Script file="Source\Vendor\Vendor.lua" />
+
+    <Script file="Source\Item\ItemInfo.lua" />
+    <Script file="Source\Item\VendorBuy.lua" />
+    <Script file="Source\Item\Classes\ItemFilterPart.lua" />
+    <Script file="Source\Item\ItemFilter.lua" />
+
+    <Script file="Source\Inventory\BagTracking.lua" />
+    <Script file="Source\Inventory\WarbankTracking.lua" />
+
+    <Script file="Source\Auction\Classes\BlackMarket.lua" />
+    <Script file="Source\Auction\Classes\Scanner.lua" />
+    <Script file="Source\Auction\Classes\Expiring.lua" />
+    <Script file="Source\Auction\Classes\SaleHint.lua" />
+    <Script file="Source\Auction\Classes\FullScan.lua" />
+    <Script file="Source\Auction\Auction.lua" />
+
+    <Script file="Source\Mail\Classes\Util.lua" />
+    <Script file="Source\Mail\Classes\Scanner.lua" />
+    <Script file="Source\Mail\Classes\PendingMail.lua" />
+    <Script file="Source\Mail\Classes\Expiring.lua" />
+    <Script file="Source\Mail\Classes\Contacts.lua" />
+    <Script file="Source\Mail\Mail.lua" />
+
+    <Script file="Source\Guild\Classes\Scanner.lua" />
+    <Script file="Source\Guild\Guild.lua" />
+
+    <Script file="Source\Profession\Classes\Data.lua" />
+    <Script file="Source\Profession\Classes\State.lua" />
+    <Script file="Source\Profession\Classes\Quality.lua" />
+    <Script file="Source\Profession\Classes\Scanner.lua" />
+    <Script file="Source\Profession\Classes\CategoryCache.lua" />
+    <Script file="Source\Profession\Profession.lua" />
+
+    <Script file="Source\UI\SyntaxHelpers.lua" />
+    <Script file="Source\UI\TextureAtlas.lua" />
+    <Script file="Source\UI\TooltipBuilder.lua" />
+
+    <Script file="Source\Sync\Classes\Constants.lua" />
+    <Script file="Source\Sync\Classes\Comm.lua" />
+    <Script file="Source\Sync\Classes\Connection.lua" />
+    <Script file="Source\Sync\Classes\RPC.lua" />
+    <Script file="Source\Sync\Classes\Mirror.lua" />
+    <Script file="Source\Sync\Sync.lua" />
+
+    <Script file="Source\AuctionScan\Classes\Util.lua" />
+    <Script file="Source\AuctionScan\Classes\SubRow.lua" />
+    <Script file="Source\AuctionScan\Classes\Row.lua" />
+    <Script file="Source\AuctionScan\Classes\Scanner.lua" />
+    <Script file="Source\AuctionScan\Classes\Query.lua" />
+    <Script file="Source\AuctionScan\Classes\QueryUtil.lua" />
+    <Script file="Source\AuctionScan\Classes\FindThread.lua" />
+    <Script file="Source\AuctionScan\Classes\ScanManager.lua" />
+    <Script file="Source\AuctionScan\Classes\Lock.lua" />
+    <Script file="Source\AuctionScan\AuctionScan.lua" />
+    <Script file="Source\AuctionScan\AuctionPostContext.lua" />
+    <Script file="Source\AuctionScan\AuctionSearchContext.lua" />
+</Ui>

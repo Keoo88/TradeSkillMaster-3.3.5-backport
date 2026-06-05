@@ -1,0 +1,22 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    <Script file="Core.lua" />
+
+    <Script file="Convert\Transform.lua" />
+    <Script file="Convert\VendorTrade.lua" />
+
+    <Script file="Destroy\Disenchant.lua" />
+    <Script file="Destroy\Mill.lua" />
+    <Script file="Destroy\Prospect.lua" />
+
+    <Script file="Game\Addons.lua" />
+    <Script file="Game\Realm.lua" />
+
+    <Script file="Item\NonDisenchantable.lua" />
+    <Script file="Item\VendorSell.lua" />
+
+    <Script file="Profession\Enchant.lua" />
+    <Script file="Profession\Engineering.lua" />
+    <Script file="Profession\OptionalMat.lua" />
+    <Script file="Profession\Salvage.lua" />
+</Ui>
