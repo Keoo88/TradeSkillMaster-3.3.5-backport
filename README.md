@@ -108,6 +108,7 @@ based on your groups, and empty your mailbox with a single click.
    \Interface\AddOns\
    ```
 5. Also install the **`!!!ClassicAPI`** addon into `\Interface\AddOns\` (required).
+   - Download: [classicapi-1.20.zip](https://gitlab.com/Tsoukie/classicapi/-/archive/1.20/classicapi-1.20.zip)
 6. Enable both on the character-select AddOns screen and launch the game. Type `/tsm` to open.
 
 ### Compatibility
@@ -210,6 +211,7 @@ based on your groups, and empty your mailbox with a single click.
    \Interface\AddOns\
    ```
 5. Также установите аддон **`!!!ClassicAPI`** в `\Interface\AddOns\` (обязательно).
+   - Скачать: [classicapi-1.20.zip](https://gitlab.com/Tsoukie/classicapi/-/archive/1.20/classicapi-1.20.zip)
 6. Включите оба на экране выбора персонажа и запустите игру. Введите `/tsm`, чтобы открыть.
 
 ### Совместимость
