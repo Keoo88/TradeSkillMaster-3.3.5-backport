@@ -109,7 +109,14 @@ end
 
 ---Release the element.
 function Element:Release()
-	assert(self._acquired)
+	-- 3.3.5a backport: the element recycling pool can occasionally release an element
+	-- twice during frame teardown or nav-tab switches (Frame.Release -> ReleaseAllChildren
+	-- -> child:Release on a child that was already released/recycled). On retail this never
+	-- happens, so an assert was fine; here it must be idempotent or the assert crashes the
+	-- whole TSM UI on nav clicks / closing the window. If already released, no-op.
+	if not self._acquired then
+		return
+	end
 	self:ReleaseAllChildren()
 
 	for _, cancellable in pairs(self._cancellables) do
