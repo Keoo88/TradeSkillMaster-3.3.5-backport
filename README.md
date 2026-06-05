@@ -33,7 +33,7 @@ to the **WoW 3.3.5a (WotLK)** client.
 
 #### Auction House
 
-![Auction House](screenshots/auction-house.png)
+![Auction House](TradeSkillMaster/screenshots/auction-house.png)
 
 The central hub for everything auction-related. Scan the entire auction house,
 browse current listings, and search for specific items or whole groups. Both a
@@ -41,7 +41,7 @@ fast full-scan and targeted searches are built right into the AH window.
 
 #### Auctioning
 
-![Auctioning](screenshots/auctioning.jpg)
+![Auctioning](TradeSkillMaster/screenshots/auctioning.jpg)
 
 Bulk-post your items for sale. A single Post Scan walks through your groups,
 applies your auctioning operations (pricing, undercut, stack size, duration),
@@ -49,7 +49,7 @@ and posts everything for you — no more posting auctions one by one.
 
 #### Crafting
 
-![Crafting](screenshots/crafting.png)
+![Crafting](TradeSkillMaster/screenshots/crafting.png)
 
 Manage your professions and crafting queue. Track recipes and reagents, queue
 up what you want to make, and see the expected crafting profit so you always
@@ -57,21 +57,21 @@ know which crafts are worth selling.
 
 #### Dashboard
 
-![Dashboard](screenshots/Dashboard.png)
+![Dashboard](TradeSkillMaster/screenshots/Dashboard.png)
 
 The main overview screen. At-a-glance summaries and charts of your activity —
 gold, sales, and the key numbers you care about, all in one place.
 
 #### Destroying
 
-![Destroying](screenshots/destroying.jpg)
+![Destroying](TradeSkillMaster/screenshots/destroying.jpg)
 
 Disenchant, mill, and prospect items in bulk. Set up groups and operations and
 let TSM process stacks of materials quickly instead of doing it by hand.
 
 #### Groups
 
-![Groups](screenshots/groups.png)
+![Groups](TradeSkillMaster/screenshots/groups.png)
 
 The heart of TSM. Organize your items into groups and attach operations
 (auctioning, shopping, crafting, mailing, etc.) so every other module knows
@@ -79,7 +79,7 @@ exactly how to treat each item.
 
 #### Mailing
 
-![Mailing](screenshots/Mailing.png)
+![Mailing](TradeSkillMaster/screenshots/Mailing.png)
 
 Send and collect mail in bulk. Move items and gold between your characters
 based on your groups, and empty your mailbox with a single click.
@@ -134,7 +134,7 @@ based on your groups, and empty your mailbox with a single click.
 
 #### Аукцион (Auction House)
 
-![Auction House](screenshots/auction-house.png)
+![Auction House](TradeSkillMaster/screenshots/auction-house.png)
 
 Главный центр всего, что связано с аукционом. Сканируйте весь аукцион,
 просматривайте текущие лоты и ищите конкретные предметы или целые группы.
@@ -142,7 +142,7 @@ based on your groups, and empty your mailbox with a single click.
 
 #### Выставление лотов (Auctioning)
 
-![Auctioning](screenshots/auctioning.jpg)
+![Auctioning](TradeSkillMaster/screenshots/auctioning.jpg)
 
 Массовое выставление предметов на продажу. Одно сканирование (Post Scan)
 проходит по вашим группам, применяет операции аукциониста (цена, undercut,
@@ -151,7 +151,7 @@ based on your groups, and empty your mailbox with a single click.
 
 #### Крафт (Crafting)
 
-![Crafting](screenshots/crafting.png)
+![Crafting](TradeSkillMaster/screenshots/crafting.png)
 
 Управление профессиями и очередью крафта. Отслеживайте рецепты и реагенты,
 ставьте в очередь то, что хотите создать, и видьте ожидаемую прибыль от крафта —
@@ -159,21 +159,21 @@ based on your groups, and empty your mailbox with a single click.
 
 #### Панель (Dashboard)
 
-![Dashboard](screenshots/Dashboard.png)
+![Dashboard](TradeSkillMaster/screenshots/Dashboard.png)
 
 Главный обзорный экран. Сводки и графики вашей активности с первого взгляда —
 золото, продажи и ключевые показатели в одном месте.
 
 #### Распыление (Destroying)
 
-![Destroying](screenshots/destroying.jpg)
+![Destroying](TradeSkillMaster/screenshots/destroying.jpg)
 
 Массовое распыление, размол и огранка предметов. Настройте группы и операции —
 и TSM быстро обработает стаки материалов вместо ручной работы.
 
 #### Группы (Groups)
 
-![Groups](screenshots/groups.png)
+![Groups](TradeSkillMaster/screenshots/groups.png)
 
 Сердце TSM. Организуйте предметы в группы и привязывайте к ним операции
 (аукцион, закупка, крафт, почта и т.д.), чтобы каждый модуль точно знал, как
@@ -181,7 +181,7 @@ based on your groups, and empty your mailbox with a single click.
 
 #### Почта (Mailing)
 
-![Mailing](screenshots/Mailing.png)
+![Mailing](TradeSkillMaster/screenshots/Mailing.png)
 
 Массовая отправка и сбор почты. Перемещайте предметы и золото между своими
 персонажами на основе групп и опустошайте почтовый ящик одним кликом.
