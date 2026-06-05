@@ -629,3 +629,47 @@ if not _G.date then
 		return os and os.date and os.date(...) or "??:??:??"
 	end
 end
+
+-- ============================================================================
+-- Blizzard_DebugTools ScriptErrorsFrame guard.
+-- On 3.3.5a the stock error display is buggy: ScriptErrorsFrame_Update (line ~432)
+-- can call format() with a nil argument and throw, which cascades into a crash
+-- *while displaying another addon's error* (e.g. DBM-Core enabling via CombatLog).
+-- The visible "bad argument #6 to 'format'" is this secondary crash, not the root.
+-- Wrap the frame's entry points in pcall so a broken native error frame can never
+-- crash the client. Errors are still captured by TSM's debug log (TSMDebugDB) and
+-- the default chat error output. Blizzard_DebugTools is LoadOnDemand (loads on the
+-- first script error), so guard now (if already loaded) and again on ADDON_LOADED.
+-- ============================================================================
+
+do
+	local function guardScriptErrorsFrame()
+		if type(_G.ScriptErrorsFrame_OnError) == "function" and not _G.__tsmGuardedOnError then
+			local orig = _G.ScriptErrorsFrame_OnError
+			_G.ScriptErrorsFrame_OnError = function(...)
+				local ok, err = pcall(orig, ...)
+				if not ok and _G.TSMDBG and _G.TSMDBG.LogErr then
+					_G.TSMDBG.LogErr("ScriptErrorsFrame_OnError", err)
+				end
+			end
+			_G.__tsmGuardedOnError = true
+		end
+		if type(_G.ScriptErrorsFrame_Update) == "function" and not _G.__tsmGuardedUpdate then
+			local orig = _G.ScriptErrorsFrame_Update
+			_G.ScriptErrorsFrame_Update = function(...)
+				local ok = pcall(orig, ...)
+				return ok
+			end
+			_G.__tsmGuardedUpdate = true
+		end
+	end
+
+	guardScriptErrorsFrame()
+	local f = CreateFrame("Frame")
+	f:RegisterEvent("ADDON_LOADED")
+	f:SetScript("OnEvent", function(_, _, addon)
+		if addon == "Blizzard_DebugTools" then
+			guardScriptErrorsFrame()
+		end
+	end)
+end
