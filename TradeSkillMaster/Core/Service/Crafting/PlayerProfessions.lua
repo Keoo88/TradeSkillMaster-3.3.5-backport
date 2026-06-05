@@ -73,6 +73,12 @@ function PlayerProfessions.OnInitialize(settingsDB)
 end
 
 function PlayerProfessions.GetProfessionSkill(player, profession)
+	-- 3.3.5a: Spell.GetInfo() для некоторых ID профессий (напр. 28897 Ювелирное дело)
+	-- может вернуть nil, тогда сюда прилетает profession=nil и Query:Equal падает на assert.
+	-- Защищаемся от nil player/profession и просто возвращаем nil (downstream это обрабатывает).
+	if not player or not profession then
+		return nil
+	end
 	return private.db:NewQuery()
 		:Select("level")
 		:Equal("player", player)

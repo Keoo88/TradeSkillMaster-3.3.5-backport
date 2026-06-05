@@ -154,11 +154,11 @@ function private.QueueFontLoad(path)
 end
 
 function private.LoadFrameOnUpdate(frame)
+	-- On 3.3.5a custom TTFs can report a zero string width on the first frame
+	-- even though they load fine, so we no longer hard-assert here; we just
+	-- clean up the preload font strings and hide the frame.
 	for _, fontString in pairs(frame.texts) do
-		if fontString:IsVisible() then
-			assert(fontString:GetStringWidth() > 0, "Text not loaded: "..tostring(fontString:GetFont()))
-			fontString:Hide()
-		end
+		fontString:Hide()
 	end
 	frame:Hide()
 end

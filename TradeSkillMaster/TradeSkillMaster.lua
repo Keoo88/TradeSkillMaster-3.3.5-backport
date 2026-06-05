@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------------------------ --
 --                                TradeSkillMaster                                --
---                          https://tradeskillmaster.com                          --
---    All Rights Reserved - Detailed license information included with addon.     --
+--        WotLK 3.3.5a backport by Keoo - https://discord.gg/sKpJbUrsvR           --
+--    Based on the original TradeSkillMaster. License info included with addon.   --
 -- ------------------------------------------------------------------------------ --
 
 local TSM = select(2, ...) ---@type TSM

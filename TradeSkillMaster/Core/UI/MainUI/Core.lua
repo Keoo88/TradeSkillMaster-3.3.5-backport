@@ -71,6 +71,7 @@ function private.CreateMainFrame()
 		:SetStrata("HIGH")
 		:AddPlayerGold(private.settings)
 		:AddAppStatusIcon(AppHelper.GetRegion(), AppHelper.GetLastSync(), TSM.AuctionDB.GetAppDataUpdateTimes())
+		:AddDiscordIcon("https://discord.gg/sKpJbUrsvR")
 		:SetScript("OnHide", private.BaseFrameOnHide)
 	for _, info in ipairs(private.topLevelPages) do
 		frame:AddNavButton(info.name, info.callback)

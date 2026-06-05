@@ -193,22 +193,7 @@ Theme:OnModuleLoad(function()
 
 	-- Load fonts
 	-- TODO: eventually allow for different font sets?
-	FontObject.LoadPaths(OVERRIDE_FONT_PATHS)
-	private.currentFontSet = {
-		HEADING_H5 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 20, 28),
-		BODY_BODY1 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 16, 24),
-		BODY_BODY1_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, 16, 24),
-		BODY_BODY2 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 14, 20),
-		BODY_BODY2_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, 14, 20),
-		BODY_BODY2_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, 14, 20),
-		BODY_BODY3 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 12, 20),
-		BODY_BODY3_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, 12, 20),
-		ITEM_BODY1 = FontObject.New(FontObject.TYPE.ITEM, 16, 24),
-		ITEM_BODY2 = FontObject.New(FontObject.TYPE.ITEM, 14, 20),
-		ITEM_BODY3 = FontObject.New(FontObject.TYPE.ITEM, 12, 20),
-		TABLE_TABLE1 = FontObject.New(FontObject.TYPE.TABLE, 12, 20),
-		TABLE_TABLE1_OUTLINE = FontObject.New(FontObject.TYPE.TABLE, 12, 20, "OUTLINE"),
-	}
+	private.EnsureFontSet()
 end)
 
 
@@ -389,9 +374,35 @@ function Theme.GetCraftedQualityColorKey(quality, useMidnightIcon)
 	return key
 end
 
+---Ensures the active font set has been initialized. On some clients (e.g. 3.3.5a)
+---the module-load callback may not run before fonts are first needed, so we lazily
+---build the font set on demand to avoid indexing a nil currentFontSet.
+function private.EnsureFontSet()
+	if private.currentFontSet then
+		return
+	end
+	FontObject.LoadPaths(OVERRIDE_FONT_PATHS)
+	private.currentFontSet = {
+		HEADING_H5 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 20, 28),
+		BODY_BODY1 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 16, 24),
+		BODY_BODY1_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, 16, 24),
+		BODY_BODY2 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 14, 20),
+		BODY_BODY2_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, 14, 20),
+		BODY_BODY2_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, 14, 20),
+		BODY_BODY3 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 12, 20),
+		BODY_BODY3_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, 12, 20),
+		ITEM_BODY1 = FontObject.New(FontObject.TYPE.ITEM, 16, 24),
+		ITEM_BODY2 = FontObject.New(FontObject.TYPE.ITEM, 14, 20),
+		ITEM_BODY3 = FontObject.New(FontObject.TYPE.ITEM, 12, 20),
+		TABLE_TABLE1 = FontObject.New(FontObject.TYPE.TABLE, 12, 20),
+		TABLE_TABLE1_OUTLINE = FontObject.New(FontObject.TYPE.TABLE, 12, 20, "OUTLINE"),
+	}
+end
+
 ---Gets the font object from the current active font set.
 ---@param key string The key of the font to get
 function Theme.IsValidFont(key)
+	private.EnsureFontSet()
 	return private.currentFontSet[key] and true or false
 end
 

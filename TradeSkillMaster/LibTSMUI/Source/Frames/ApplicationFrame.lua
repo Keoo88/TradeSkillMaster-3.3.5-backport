@@ -188,6 +188,38 @@ function ApplicationFrame:AddSwitchButton(onClickHandler)
 	return self
 end
 
+---Adds a Discord icon button to the top-right of the title frame.
+---@param url string The Discord invite URL shown in a copyable popup
+---@return ApplicationFrame
+function ApplicationFrame:AddDiscordIcon(url)
+	private.discordUrl = url
+	if not StaticPopupDialogs["TSM_KEOO_DISCORD"] then
+		StaticPopupDialogs["TSM_KEOO_DISCORD"] = {
+			text = "Discord Keoo — нажмите Ctrl+C, чтобы скопировать ссылку:",
+			button1 = CLOSE,
+			hasEditBox = true,
+			editBoxWidth = 280,
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+			preferredIndex = 3,
+			OnShow = private.DiscordPopupOnShow,
+			EditBoxOnEnterPressed = private.DiscordPopupClose,
+			EditBoxOnEscapePressed = private.DiscordPopupClose,
+		}
+	end
+	local titleFrame = self:GetElement("titleFrame")
+	titleFrame:AddChildBeforeById("closeBtn", UIElements.New("Button", "discordBtn")
+		:SetSize(20, 20)
+		:SetMargin(0, 8, 0, 0)
+		:SetBackground("Interface\\AddOns\\WeakAuras\\Media\\Textures\\discord.tga")
+		:SetScript("OnClick", private.DiscordButtonOnClick)
+		:SetScript("OnEnter", private.DiscordButtonOnEnter)
+		:SetScript("OnLeave", private.DiscordButtonOnLeave)
+	)
+	return self
+end
+
 ---Sets whether or not the frame is protected (doesn't close with ESC).
 ---@param protected boolean
 ---@return ApplicationFrame
@@ -758,6 +790,42 @@ end
 
 function private.ResizeOnLeave()
 	Tooltip.Hide()
+end
+
+function private.DiscordButtonOnClick(button)
+	StaticPopup_Show("TSM_KEOO_DISCORD")
+end
+
+function private.DiscordButtonOnEnter(button)
+	local frame = button and button._GetBaseFrame and button:_GetBaseFrame()
+	if not frame then
+		return
+	end
+	GameTooltip:SetOwner(frame, "ANCHOR_BOTTOMLEFT")
+	GameTooltip:AddLine("Discord Keoo")
+	GameTooltip:AddLine(private.discordUrl or "", 1, 1, 1)
+	GameTooltip:Show()
+end
+
+function private.DiscordButtonOnLeave(button)
+	GameTooltip:Hide()
+end
+
+function private.DiscordPopupOnShow(self)
+	local eb = self.editBox
+	if eb then
+		eb:SetText(private.discordUrl or "")
+		eb:SetCursorPosition(0)
+		eb:HighlightText()
+		eb:SetFocus()
+	end
+end
+
+function private.DiscordPopupClose(editBox)
+	local parent = editBox:GetParent()
+	if parent and parent.Hide then
+		parent:Hide()
+	end
 end
 
 function private.CloseButtonOnClick(button)

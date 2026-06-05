@@ -12,8 +12,8 @@
 ## Category-ruRU: Лоты
 ## Category-zhCN: 拍卖
 ## Category-zhTW: 拍賣
-## Notes: Auction house and gold making addon.
-## Author: TradeSkillMaster Team
+## Notes: Auction house and gold making addon. WotLK 3.3.5a backport by Keoo - Discord: https://discord.gg/sKpJbUrsvR
+## Author: Keoo (Discord: https://discord.gg/sKpJbUrsvR)
 ## Version: v4.14.66
 ## SavedVariables: TradeSkillMasterDB, TSMItemInfoDB, TSMDebugDB
 ## Dependencies: !!!ClassicAPI
