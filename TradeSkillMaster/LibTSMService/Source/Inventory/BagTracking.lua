@@ -189,12 +189,30 @@ function BagTracking.CreateQueryBagsBank()
 	return private.slotDB:NewQuery()
 end
 
+---Forces a synchronous rescan of all bag slots (backpack + bags). On 3.3.5 the
+---login-time BAG_UPDATE events for non-backpack bags are unreliable, so the slotDB
+---can be empty even when the bags are full. Callers that must see current bag
+---contents (e.g. the Auctioning post scan) can call this first.
+function BagTracking.RescanAllBags()
+	private.slotDB:SetQueryUpdatesPaused(true)
+	for bag = Container.GetBackpackContainer(), Container.GetNumBags() do
+		private.ScanBagOrBank(bag)
+	end
+	private.slotDB:SetQueryUpdatesPaused(false)
+end
+
 ---Creates a new query of auctionable items in the bags.
 ---@return DatabaseQuery
 function BagTracking.CreateQueryBagsAuctionable()
-	return BagTracking.CreateQueryBags()
-		:Equal("isBound", false)
-		:Custom(private.IsAuctionableQueryFilter)
+	-- 3.3.5: the native container API has no reliable bound flag, so the slotDB
+	-- "isBound" field is unreliable here (it ends up true for many perfectly
+	-- auctionable non-white items, which wrongly removed them from the post scan).
+	-- Only apply the isBound filter on clients that actually report it.
+	local query = BagTracking.CreateQueryBags()
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Equal("isBound", false)
+	end
+	return query:Custom(private.IsAuctionableQueryFilter)
 end
 
 ---Creates a query of bag slots with the specified item.
@@ -581,14 +599,17 @@ function private.IsAuctionableQueryFilter(row)
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		return AuctionHouse.IsSellable(bag, slot)
 	else
-		-- 3.3.5: GetContainerItemInfo() doesn't report bound status, so the isBound
-		-- field is always false here and soulbound / account-bound items would slip
-		-- through and get queued for posting even though they can't be auctioned.
-		-- Detect bound status via tooltip scan and exclude such items.
+		-- 3.3.5: native GetContainerItemInfo() doesn't report bound status, so detect
+		-- soulbound / account-bound items by scanning the item tooltip. We use TSM's own
+		-- dedicated TSMScanTooltip and only match the exact localized bound lines
+		-- (ITEM_SOULBOUND etc.), so unrelated tooltip lines added by other addons won't
+		-- produce false positives. The AH refuses to post bound items, so they must be
+		-- excluded from the post scan. (Earlier "everything looked bound" reports were
+		-- actually caused by the empty slotDB, now fixed via BagTracking.RescanAllBags.)
 		if TooltipScanning.IsBound(bag, slot) then
 			return false
 		end
-		return not TooltipScanning.HasUsedCharges(bag, slot)
+		return true
 	end
 end
 
