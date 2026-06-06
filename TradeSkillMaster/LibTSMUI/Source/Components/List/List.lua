@@ -69,6 +69,7 @@ function List:__init()
 	self._hScrollValue = 0
 	self._vScrollValue = 0
 	self._prevDataOffset = nil
+	self._inDrawVFrames = false
 	self._cachedVisibleHeight = 0  -- cached from _DrawVFrames for use in _GetMaxVisibleRows
 	self._registeredItemInfoObjects = {}
 	self._registeredItemInfoBaseItemStrings = {}
@@ -365,8 +366,10 @@ function List.__protected:_DrawRows(startRowIndex, endRowIndex)
 		local dataIndex = i + dataOffset
 		assert(dataIndex <= self._numRows)
 		local row = self._rowElements[i]
-		row:SetDataIndex(dataIndex)
-		self:_HandleRowDraw(row)
+		if row then
+			row:SetDataIndex(dataIndex)
+			self:_HandleRowDraw(row)
+		end
 	end
 end
 
@@ -414,12 +417,17 @@ function List.__protected:_DrawVFrames()
 	local maxScroll = self:_GetMaxVScroll()
 	local vScrollOffset = min(self._vScrollValue, maxScroll)
 
+	-- On 3.3.5a, SetMinMaxValues/SetValue synchronously fire OnValueChanged, which would
+	-- re-enter _OnVScrollbarValueChanged and rotate/redraw rows while Draw() hasn't finished
+	-- creating all the row elements yet. Guard against that re-entrancy.
+	self._inDrawVFrames = true
 	self._vScrollbar:TSMUpdateThumbLength(totalHeight, visibleHeight)
 	self._vScrollbar:SetMinMaxValues(0, maxScroll)
 	-- FIXME: this causes a double-draw on first show(?) and is super hacky
 	if self._vScrollbar:GetValue() ~= vScrollOffset or self._numRows > 0 then
 		self._vScrollbar:SetValue(vScrollOffset)
 	end
+	self._inDrawVFrames = false
 	self._content:SetHeight(numVisibleRows * rowHeight)
 	self._vScrollFrame:SetVerticalScroll(vScrollOffset % rowHeight)
 end
@@ -580,6 +588,12 @@ end
 
 function List.__private:_OnVScrollbarValueChanged(frame, value)
 	self:_OnVScrollbarValueChangedNoDraw(frame, value)
+	if self._inDrawVFrames then
+		-- Re-entered synchronously from SetMinMaxValues/SetValue inside _DrawVFrames on 3.3.5a.
+		-- Skip the rotate/redraw to avoid operating on a partially-populated row list; the
+		-- in-progress Draw()/_DrawVFrames will draw all rows once it finishes.
+		return
+	end
 	self:_DrawVFrames()
 
 	local numVisibleRows = self:_GetNumVisibleRows()
