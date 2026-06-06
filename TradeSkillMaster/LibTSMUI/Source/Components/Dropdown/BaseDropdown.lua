@@ -190,7 +190,7 @@ function BaseDropdown.__protected:_GetDialogSize()
 	self._widthText:Show()
 	for _, item in ipairs(self._items) do
 		self._widthText:SetText(item)
-		maxStringWidth = max(maxStringWidth, self._widthText:GetUnboundedStringWidth())
+		maxStringWidth = max(maxStringWidth, self._widthText:GetStringWidth())
 	end
 	self._widthText:Hide()
 	local linesHeight = nil
