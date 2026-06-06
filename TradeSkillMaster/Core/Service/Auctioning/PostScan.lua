@@ -345,6 +345,10 @@ end
 -- ============================================================================
 
 function private.UpdateBagDB()
+	-- 3.3.5: the login-time BAG_UPDATE events for non-backpack bags are unreliable,
+	-- so BagTracking's slotDB can be empty/partial here. Force a fresh full bag scan
+	-- right before we read it so the post scan always sees the real bag contents.
+	BagTracking.RescanAllBags()
 	private.bagDB:TruncateAndBulkInsertStart()
 	local count = 0
 	local query = BagTracking.CreateQueryBagsAuctionable()
@@ -358,6 +362,27 @@ function private.UpdateBagDB()
 	end
 	query:Release()
 	private.bagDB:BulkInsertEnd()
+	-- DIAGNOSTIC: count bag slots at each filter stage to locate where items are lost
+	local nAll, nBags, nNotBound = 0, 0, 0
+	local diagAll = BagTracking.CreateQueryBagsBank():Select("slotId")
+	for _ in diagAll:Iterator() do nAll = nAll + 1 end
+	diagAll:Release()
+	local diagBags = BagTracking.CreateQueryBags():Select("slotId")
+	for _ in diagBags:Iterator() do nBags = nBags + 1 end
+	diagBags:Release()
+	local diagNotBound = BagTracking.CreateQueryBags():Equal("isBound", false):Select("slotId")
+	for _ in diagNotBound:Iterator() do nNotBound = nNotBound + 1 end
+	diagNotBound:Release()
+	local apiSlots, apiFilled = 0, 0
+	for bag = Container.GetBackpackContainer(), Container.GetNumBags() do
+		local ns = Container.GetNumSlots(bag) or 0
+		apiSlots = apiSlots + ns
+		for slot = 1, ns do
+			if Container.GetItemLink(bag, slot) then apiFilled = apiFilled + 1 end
+		end
+	end
+	ChatMessage.PrintfUser("DEBUG: slots all=%d bagsRange=%d notBound=%d auctionable=%d", nAll, nBags, nNotBound, count)
+	ChatMessage.PrintfUser("DEBUG: API numBags=%d apiSlots=%d apiFilled=%d", Container.GetNumBags(), apiSlots, apiFilled)
 	ChatMessage.PrintfUser("DEBUG: UpdateBagDB found %d items in bags", count)
 end
 

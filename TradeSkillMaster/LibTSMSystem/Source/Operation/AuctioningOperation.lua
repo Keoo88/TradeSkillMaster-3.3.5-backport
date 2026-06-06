@@ -202,7 +202,7 @@ function AuctioningOperation.Load(localizedName, defaultZeroUndercut, includeBla
 		:AddCustomStringSetting("postCap", "5")
 		:AddCustomStringSetting("keepQuantity", "0")
 		:AddCustomStringSetting("maxExpires", "0")
-		:AddNumberSetting("duration", 2, private.SanitizeDuration)
+		:AddNumberSetting("duration", 1, private.SanitizeDuration)
 		:AddNumberSetting("bidPercent", 1)
 		:AddCustomStringSetting("undercut", defaultZeroUndercut and "0c" or "1c", private.SanitizeUndercut)
 		:AddCustomStringSetting("minPrice", "check(first(crafting,dbmarket,dbregionmarketavg),max(0.25*avg(crafting,dbmarket,dbregionmarketavg),1.5*vendorsell))")
