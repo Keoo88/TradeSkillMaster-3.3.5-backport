@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/TSM-v4.14.66-ff8800?style=for-the-badge&logo=appveyor">
-  <img src="https://img.shields.io/badge/WoK-3.3.5a-blue?style=for-the-badge">
+  <img src="https://img.shields.io/badge/WotLK-3.3.5a-blue?style=for-the-badge">
   <img src="https://img.shields.io/badge/status-beta-red?style=for-the-badge">
 </p>
 
