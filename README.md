@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="https://tradeskillmaster.com/logo.png" alt="TradeSkillMaster" width="120">
+</p>
+
+<p align="center">
   <b><span style="color:red">⚠ WARNING: This addon is in BETA — may contain bugs and incomplete features ⚠</span></b>
 </p>
 
