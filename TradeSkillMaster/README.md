@@ -34,7 +34,7 @@ to the **WoW 3.3.5a (WotLK)** client, made by **Keoo**.
 
 #### Auction House
 
-![Auction House](screenshots/auction-house.png)
+<img width="834" height="588" alt="auction-house" src="https://github.com/user-attachments/assets/04c11435-5bb2-4609-8100-3b93da5a9384" />
 
 The central hub for everything auction-related. Scan the entire auction house,
 browse current listings, and search for specific items or whole groups. Both a
@@ -42,7 +42,7 @@ fast full-scan and targeted searches are built right into the AH window.
 
 #### Auctioning
 
-![Auctioning](screenshots/auctioning.jpg)
+<img width="831" height="586" alt="auctioning" src="https://github.com/user-attachments/assets/d33addb2-416d-40c2-a27e-f9241233a647" />
 
 Bulk-post your items for sale. A single Post Scan walks through your groups,
 applies your auctioning operations (pricing, undercut, stack size, duration),
@@ -50,7 +50,7 @@ and posts everything for you — no more posting auctions one by one.
 
 #### Crafting
 
-![Crafting](screenshots/crafting.png)
+<img width="822" height="589" alt="crafting" src="https://github.com/user-attachments/assets/32f788ae-b193-4774-9bfd-3768be1125a4" />
 
 Manage your professions and crafting queue. Track recipes and reagents, queue
 up what you want to make, and see the expected crafting profit so you always
@@ -58,21 +58,21 @@ know which crafts are worth selling.
 
 #### Dashboard
 
-![Dashboard](screenshots/Dashboard.png)
+<img width="902" height="702" alt="Dashboard" src="https://github.com/user-attachments/assets/1312d48f-a8da-45e8-8e15-c35f39e4bacc" />
 
 The main overview screen. At-a-glance summaries and charts of your activity —
 gold, sales, and the key numbers you care about, all in one place.
 
 #### Destroying
 
-![Destroying](screenshots/destroying.jpg)
+<img width="295" height="443" alt="destroying" src="https://github.com/user-attachments/assets/a6608ce0-dc40-4e8e-aefb-55e004a19d48" />
 
 Disenchant, mill, and prospect items in bulk. Set up groups and operations and
 let TSM process stacks of materials quickly instead of doing it by hand.
 
 #### Groups
 
-![Groups](screenshots/groups.png)
+<img width="903" height="706" alt="groups" src="https://github.com/user-attachments/assets/a999cd20-8471-490d-91be-147f3732c0ef" />
 
 The heart of TSM. Organize your items into groups and attach operations
 (auctioning, shopping, crafting, mailing, etc.) so every other module knows
@@ -80,7 +80,7 @@ exactly how to treat each item.
 
 #### Mailing
 
-![Mailing](screenshots/Mailing.png)
+<img width="621" height="519" alt="Mailing" src="https://github.com/user-attachments/assets/1b73fda9-e164-4d3b-8dfc-18b60c94ff2f" />
 
 Send and collect mail in bulk. Move items and gold between your characters
 based on your groups, and empty your mailbox with a single click.
