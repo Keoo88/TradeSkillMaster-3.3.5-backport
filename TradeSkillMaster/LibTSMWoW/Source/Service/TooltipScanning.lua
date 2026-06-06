@@ -45,6 +45,27 @@ function TooltipScanning.HasUsedCharges(bag, slot)
 	return false
 end
 
+---Gets whether or not an item in a container slot is soulbound or account bound.
+---3.3.5: native GetContainerItemInfo() does not report bound status, so we scan
+---the item tooltip for the (localized) soulbound / account-bound lines instead.
+---@param bag number The bag index
+---@param slot number The slot index
+---@return boolean
+function TooltipScanning.IsBound(bag, slot)
+	local itemId = Container.GetItemId(bag, slot)
+	if not itemId then
+		-- No item in this slot
+		return false
+	end
+	local info = private.SetContainerItem(bag, slot)
+	for _, text in private.TooltipLineIterator(info) do
+		if text == ITEM_SOULBOUND or text == ITEM_ACCOUNTBOUND or text == ITEM_BNETACCOUNTBOUND or text == ITEM_BIND_TO_ACCOUNT or text == ITEM_BIND_TO_BNETACCOUNT then
+			return true
+		end
+	end
+	return false
+end
+
 ---Gets the max unique quantity of an item in the inbox.
 ---@param index number The index
 ---@param attachIndex number The attachment index

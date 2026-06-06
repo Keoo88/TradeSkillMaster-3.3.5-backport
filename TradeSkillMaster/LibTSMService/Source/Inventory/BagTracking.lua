@@ -581,6 +581,13 @@ function private.IsAuctionableQueryFilter(row)
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		return AuctionHouse.IsSellable(bag, slot)
 	else
+		-- 3.3.5: GetContainerItemInfo() doesn't report bound status, so the isBound
+		-- field is always false here and soulbound / account-bound items would slip
+		-- through and get queued for posting even though they can't be auctioned.
+		-- Detect bound status via tooltip scan and exclude such items.
+		if TooltipScanning.IsBound(bag, slot) then
+			return false
+		end
 		return not TooltipScanning.HasUsedCharges(bag, slot)
 	end
 end
