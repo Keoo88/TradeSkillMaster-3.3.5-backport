@@ -374,6 +374,56 @@ function Theme.GetCraftedQualityColorKey(quality, useMidnightIcon)
 	return key
 end
 
+---Resolves the font path the player is already using via LibSharedMedia.
+---Prefers ElvUI's configured font so TSM visually matches the rest of the UI.
+---Returns nil when LibSharedMedia is unavailable (e.g. no ElvUI), so callers
+---fall back to the bundled fonts.
+---@return string|nil
+function private.GetSharedMediaFontPath()
+	local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+	if not lsm then
+		return nil
+	end
+	local fontName = nil
+	local elvui = _G.ElvUI
+	local engine = elvui and elvui[1]
+	if engine and engine.db and engine.db.general and engine.db.general.font then
+		fontName = engine.db.general.font
+	end
+	fontName = fontName or lsm:GetDefault("font")
+	if not fontName then
+		return nil
+	end
+	return lsm:Fetch("font", fontName, true)
+end
+
+---Builds the font path override table. When a SharedMedia font is available we
+---use it for body and table text in both Roman and Cyrillic locales -- this pulls
+---a font that is already loaded and (for ruRU) actually has Cyrillic glyphs,
+---instead of the bundled Latin-only Montserrat/Roboto. Otherwise we fall back to
+---the bundled TSM fonts.
+---@return table
+function private.GetFontPaths()
+	local path = private.GetSharedMediaFontPath()
+	if not path then
+		return OVERRIDE_FONT_PATHS
+	end
+	local overrideTypes = {
+		FontObject.TYPE.BODY_REGULAR,
+		FontObject.TYPE.BODY_MEDIUM,
+		FontObject.TYPE.BODY_BOLD,
+		FontObject.TYPE.TABLE,
+	}
+	local paths = {}
+	for _, alphabet in ipairs({ FontObject.ALPHABET.ROMAN, FontObject.ALPHABET.CYRILLIC }) do
+		paths[alphabet] = {}
+		for _, fontType in ipairs(overrideTypes) do
+			paths[alphabet][fontType] = path
+		end
+	end
+	return paths
+end
+
 ---Ensures the active font set has been initialized. On some clients (e.g. 3.3.5a)
 ---the module-load callback may not run before fonts are first needed, so we lazily
 ---build the font set on demand to avoid indexing a nil currentFontSet.
@@ -381,7 +431,7 @@ function private.EnsureFontSet()
 	if private.currentFontSet then
 		return
 	end
-	FontObject.LoadPaths(OVERRIDE_FONT_PATHS)
+	FontObject.LoadPaths(private.GetFontPaths())
 	private.currentFontSet = {
 		HEADING_H5 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 20, 28),
 		BODY_BODY1 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 16, 24),
