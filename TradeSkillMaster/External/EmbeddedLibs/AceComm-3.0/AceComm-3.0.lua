@@ -58,9 +58,11 @@ function AceComm:RegisterComm(prefix, method)
 		method = "OnCommReceived"
 	end
 
-	if #prefix > 16 then -- TODO: 15?
-		error("AceComm:RegisterComm(prefix,method): prefix length is limited to 16 characters")
-	end
+	-- 3.3.5a backport: the 16-char prefix cap is a retail-only restriction tied to
+	-- C_ChatInfo.RegisterAddonMessagePrefix, which does not exist on WotLK. TSM's newer
+	-- AceComm wins the LibStub version arbitration and serves EVERY addon sharing
+	-- AceComm-3.0, so this hard error crashed other addons that use longer prefixes
+	-- (e.g. "SpecializedAbsorbs" = 18 chars). WotLK has no such limit, so it is removed.
 	if C_ChatInfo then
 		C_ChatInfo.RegisterAddonMessagePrefix(prefix)
 	else
