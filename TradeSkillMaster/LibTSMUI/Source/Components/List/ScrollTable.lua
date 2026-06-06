@@ -238,9 +238,13 @@ function ScrollTable.__private:_ValidateSettings()
 		private.colsTemp[col.id] = true
 	end
 	if not self._sortDisabled and not private.colsTemp[value.sortCol] then
-		Log.Err("Invalid sort col (%s)", value.sortCol)
-		wipe(private.colsTemp)
-		return false
+		-- 3.3.5a: allow sorting by a custom price/value source column (e.g. Destroy Value)
+		local customSortKey = self._customSourceItemStringDataCol and value.sortCol and self:_GetCustomStringSourceKey(value.sortCol) or nil
+		if not customSortKey then
+			Log.Err("Invalid sort col (%s)", value.sortCol)
+			wipe(private.colsTemp)
+			return false
+		end
 	end
 	for _, col in ipairs(value.cols) do
 		for k in pairs(col) do

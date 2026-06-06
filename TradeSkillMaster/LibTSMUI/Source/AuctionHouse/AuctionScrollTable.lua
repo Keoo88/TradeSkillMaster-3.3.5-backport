@@ -15,6 +15,7 @@ local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
 local TextureAtlas = LibTSMUI:From("LibTSMService"):Include("UI.TextureAtlas")
 local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local ItemString = LibTSMUI:From("LibTSMTypes"):Include("Item.ItemString")
+local CustomString = LibTSMUI:From("LibTSMTypes"):Include("CustomString")
 local TempTable = LibTSMUI:From("LibTSMUtil"):Include("BaseType.TempTable")
 local Math = LibTSMUI:From("LibTSMUtil"):Include("Lua.Math")
 local Table = LibTSMUI:From("LibTSMUtil"):Include("Lua.Table")
@@ -942,6 +943,16 @@ function AuctionScrollTable.__protected:_GetSortValue(row, id, isAscending)
 		local pct = self:_GetMarketValuePct(row)
 		return pct or (isAscending and math.huge or -math.huge)
 	else
+		-- 3.3.5a: support sorting by custom price/value source columns (e.g. Destroy Value)
+		local sourceKey, isCustomSource = private.GetCustomSourceKey(id)
+		if sourceKey then
+			local itemString = row:GetItemString() or row:GetBaseItemString()
+			local value = nil
+			if itemString then
+				value = isCustomSource and CustomString.GetValue(sourceKey, itemString) or CustomString.GetSourceValue(sourceKey, itemString)
+			end
+			return value or (isAscending and math.huge or -math.huge)
+		end
 		error("Invalid sort col id: "..tostring(id))
 	end
 end
@@ -1164,6 +1175,22 @@ function AuctionScrollTable.__protected:_HandleRowDoubleClick(row, mouseButton)
 end
 
 function AuctionScrollTable.__protected:_HandleHeaderCellClick(button, mouseButton)
+	-- 3.3.5a: allow sorting by custom price/value source columns (e.g. Destroy Value)
+	if mouseButton == "LeftButton" and not self._sortDisabled and self._customSourceItemStringDataCol then
+		local id = Table.GetDistinctKey(self._header.cells, button)
+		if id and private.GetCustomSourceKey(id) then
+			local settingsValue = self:_GetSettingsValue()
+			if id == settingsValue.sortCol then
+				settingsValue.sortAscending = not settingsValue.sortAscending
+			else
+				settingsValue.sortCol = id
+				settingsValue.sortAscending = true
+			end
+			self:_DrawSortFlag()
+			self:_UpdateData()
+			return
+		end
+	end
 	if not self.__super:_HandleHeaderCellClick(button, mouseButton) then
 		return
 	end
@@ -1175,6 +1202,24 @@ end
 -- ============================================================================
 -- Private Helper Functions
 -- ============================================================================
+
+local PRICE_SOURCE_ID_PREFIX = "_priceSource_"
+local CUSTOM_SOURCE_ID_PREFIX = "_customSource_"
+
+-- 3.3.5a: parse a custom price/value source column id (e.g. Destroy Value) so it can be sorted
+function private.GetCustomSourceKey(id)
+	if type(id) ~= "string" then
+		return nil, false
+	end
+	local prefix, source = strmatch(id, "^(_%a+_)(.+)$")
+	if prefix == PRICE_SOURCE_ID_PREFIX then
+		return source, false
+	elseif prefix == CUSTOM_SOURCE_ID_PREFIX then
+		return source, true
+	else
+		return nil, false
+	end
+end
 
 function private.RowSecondarySort(a, b)
 	return a:GetBaseItemString() < b:GetBaseItemString()
