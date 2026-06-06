@@ -27,7 +27,7 @@ function lib:IconCallback(event, name, key, value)
 		if key == "icon" then
 			lib.objects[name].icon:SetTexture(value)
 		elseif key == "iconCoords" then
-			lib.objects[name].icon:UpdateCoord()
+			if lib.objects[name].icon.UpdateCoord then lib.objects[name].icon:UpdateCoord() end -- 3.3.5a: button.icon may be reskinned by other addons (AddOnSkins/ElvUI) on this LibStub-shared lib, stripping the method; guard it
 		elseif key == "iconR" then
 			local _, g, b = lib.objects[name].icon:GetVertexColor()
 			lib.objects[name].icon:SetVertexColor(value, g, b)
@@ -147,12 +147,12 @@ end
 
 local function onMouseDown(self)
 	self.isMouseDown = true
-	self.icon:UpdateCoord()
+	if self.icon.UpdateCoord then self.icon:UpdateCoord() end -- 3.3.5a guard: icon may be reskinned without UpdateCoord (see IconCallback)
 end
 
 local function onMouseUp(self)
 	self.isMouseDown = false
-	self.icon:UpdateCoord()
+	if self.icon.UpdateCoord then self.icon:UpdateCoord() end -- 3.3.5a guard (see onMouseDown)
 end
 
 do
@@ -176,7 +176,7 @@ do
 	function onDragStart(self)
 		self:LockHighlight()
 		self.isMouseDown = true
-		self.icon:UpdateCoord()
+		if self.icon.UpdateCoord then self.icon:UpdateCoord() end -- 3.3.5a guard (see onMouseDown)
 		self:SetScript("OnUpdate", onUpdate)
 		isDraggingButton = true
 		lib.tooltip:Hide()
@@ -192,7 +192,7 @@ end
 local function onDragStop(self)
 	self:SetScript("OnUpdate", nil)
 	self.isMouseDown = false
-	self.icon:UpdateCoord()
+	if self.icon.UpdateCoord then self.icon:UpdateCoord() end -- 3.3.5a guard (see onMouseDown)
 	self:UnlockHighlight()
 	isDraggingButton = false
 	for _, button in next, lib.objects do
