@@ -405,15 +405,24 @@ end
 ---@return number
 function AuctionQuery:GetSearchProgress()
 	if not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
-		-- 3.3.5: считаем прогресс по страницам browse, т.к. search-step нет
+		-- 3.3.5: считаем прогресс по страницам browse, т.к. search-step нет.
+		-- GetNumAuctionItems total ненадёжный (часто 0 / накопительно), поэтому
+		-- используем memoized peak (_maxTotalSeen) как в _BrowseIsDone — иначе
+		-- прогресс схлопывается в 0 и прогресс-бар выглядит чёрным квадратом
+		-- весь скан (single-query post scan: progress == searchProgress).
 		local NUM_AUCTION_ITEMS_PER_PAGE = 50
 		local _, totalNumAuctions = GetNumAuctionItems("list")
 		totalNumAuctions = totalNumAuctions or 0
-		if totalNumAuctions <= 0 then
-			return 0
+		if totalNumAuctions > (self._maxTotalSeen or 0) then
+			self._maxTotalSeen = totalNumAuctions
 		end
-		local totalPages = math.ceil(totalNumAuctions / NUM_AUCTION_ITEMS_PER_PAGE)
-		if totalPages <= 0 then return 0 end
+		local total = self._maxTotalSeen or 0
+		if total <= 0 then
+			-- общее число страниц ещё неизвестно (сервер не отдал total):
+			-- показываем растущую по номеру страницы оценку, чтобы бар не был пустым/чёрным
+			return math.min(0.05 + (self._page or 0) * 0.1, 0.9)
+		end
+		local totalPages = math.max(1, math.ceil(total / NUM_AUCTION_ITEMS_PER_PAGE))
 		return math.min((self._page + 1) / totalPages, 1)
 	end
 	local progress, totalNum = 0, 0
