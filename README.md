@@ -1,13 +1,6 @@
 <p align="center">
   <img src="https://tradeskillmaster.com/logo.png" alt="TradeSkillMaster" width="120">
 </p>
-<img width="621" height="519" alt="Mailing" src="https://github.com/user-attachments/assets/1b73fda9-e164-4d3b-8dfc-18b60c94ff2f" />
-<img width="903" height="706" alt="groups" src="https://github.com/user-attachments/assets/a999cd20-8471-490d-91be-147f3732c0ef" />
-<img width="295" height="443" alt="destroying" src="https://github.com/user-attachments/assets/a6608ce0-dc40-4e8e-aefb-55e004a19d48" />
-<img width="902" height="702" alt="Dashboard" src="https://github.com/user-attachments/assets/1312d48f-a8da-45e8-8e15-c35f39e4bacc" />
-<img width="822" height="589" alt="crafting" src="https://github.com/user-attachments/assets/32f788ae-b193-4774-9bfd-3768be1125a4" />
-<img width="831" height="586" alt="auctioning" src="https://github.com/user-attachments/assets/d33addb2-416d-40c2-a27e-f9241233a647" />
-<img width="834" height="588" alt="auction-house" src="https://github.com/user-attachments/assets/04c11435-5bb2-4609-8100-3b93da5a9384" />
 
 <p align="center">
   <b><span style="color:red">⚠ WARNING: This addon is in BETA — may contain bugs and incomplete features ⚠</span></b>
