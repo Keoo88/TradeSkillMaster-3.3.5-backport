@@ -334,10 +334,19 @@ local EditBoxExtended = {}
 ---@param enabled boolean
 function EditBoxExtended:TSMSetEnabled(enabled)
 	self.__debug.enabled = enabled
-	if enabled then
-		self:Enable()
+	if self.Enable and self.Disable then
+		if enabled then
+			self:Enable()
+		else
+			self:Disable()
+		end
 	else
-		self:Disable()
+		-- 3.3.5: EditBox has no native Enable/Disable; emulate via keyboard/mouse input
+		self:EnableKeyboard(enabled)
+		self:EnableMouse(enabled)
+		if not enabled then
+			self:ClearFocus()
+		end
 	end
 end
 
