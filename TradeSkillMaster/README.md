@@ -1,29 +1,14 @@
-<p align="center">
-  <img src="https://tradeskillmaster.com/logo.png" alt="TradeSkillMaster" width="120">
-</p>
-
-<p align="center">
-  <b><span style="color:red">⚠ WARNING: This addon is in BETA — may contain bugs and incomplete features ⚠</span></b>
-</p>
-
-<br>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/TSM-v4.14.66-ff8800?style=for-the-badge&logo=appveyor">
-  <img src="https://img.shields.io/badge/WotLK-3.3.5a-blue?style=for-the-badge">
-  <img src="https://img.shields.io/badge/status-beta-red?style=for-the-badge">
-</p>
-
-<h1 align="center">TradeSkillMaster — WotLK 3.3.5a backport</h1>
+# TradeSkillMaster — WotLK 3.3.5a backport
 
 <p align="center">
   <b>The complete TradeSkillMaster suite for World of Warcraft 3.3.5a (WotLK).</b><br>
-  <i>Backport of TradeSkillMaster v4.14.66 to the WoW 3.3.5a client.</i>
+  <i>Backport of modern TradeSkillMaster to the WoW 3.3.5a client by Keoo.</i>
 </p>
 
 <p align="center">
   <a href="#english">English</a> ·
-  <a href="#russian">Русский</a>
+  <a href="#russian">Русский</a> ·
+  <a href="https://discord.gg/sKpJbUrsvR">Discord</a>
 </p>
 
 ---
@@ -41,8 +26,8 @@
 
 **TradeSkillMaster (TSM)** is an all-in-one suite for the in-game economy:
 auction house scanning, bulk posting, crafting management, mailing, group-based
-automation, and more. This repository is a **backport of TSM v4.14.66**
-to the **WoW 3.3.5a (WotLK)** client.
+automation, and more. This repository is a backport of modern TradeSkillMaster
+to the **WoW 3.3.5a (WotLK)** client, made by **Keoo**.
 
 <a name="modules"></a>
 ### Modules
@@ -98,7 +83,6 @@ based on your groups, and empty your mailbox with a single click.
    \Interface\AddOns\
    ```
 5. Also install the **`!!!ClassicAPI`** addon into `\Interface\AddOns\` (required).
-   - Download: [classicapi-1.20.zip](https://gitlab.com/Tsoukie/classicapi/-/archive/1.20/classicapi-1.20.zip)
 6. Enable both on the character-select AddOns screen and launch the game. Type `/tsm` to open.
 
 ### Compatibility
@@ -109,8 +93,9 @@ based on your groups, and empty your mailbox with a single click.
 <a name="credits"></a>
 ### Credits
 
-- Original addon: **TradeSkillMaster Team**
-- WotLK 3.3.5a backport: **Keoo**
+- Author / WotLK 3.3.5a backport: **Keoo**
+- Discord: **https://discord.gg/sKpJbUrsvR**
+- Based on the original **TradeSkillMaster**
 - Required polyfill: **!!!ClassicAPI**
 
 ---
@@ -121,7 +106,8 @@ based on your groups, and empty your mailbox with a single click.
 <p align="center">
   <a href="#модули">Модули</a> ·
   <a href="#установка">Установка</a> ·
-  <a href="#благодарности">Благодарности</a>
+  <a href="#благодарности">Благодарности</a> ·
+  <a href="https://discord.gg/sKpJbUrsvR">Discord</a>
 </p>
 
 ### Об аддоне
@@ -129,8 +115,8 @@ based on your groups, and empty your mailbox with a single click.
 **TradeSkillMaster (TSM)** — это комплексный набор инструментов для внутриигровой
 экономики: сканирование аукциона, массовое выставление лотов, управление
 профессиями, рассылка почты, автоматизация на основе групп и многое другое.
-Этот репозиторий — **бэкпорт TSM v4.14.66** под клиент
-**WoW 3.3.5a (WotLK)**.
+Этот репозиторий — бэкпорт современного TradeSkillMaster под клиент
+**WoW 3.3.5a (WotLK)**, сделан **Keoo**.
 
 <a name="модули"></a>
 ### Модули
@@ -187,7 +173,6 @@ based on your groups, and empty your mailbox with a single click.
    \Interface\AddOns\
    ```
 5. Также установите аддон **`!!!ClassicAPI`** в `\Interface\AddOns\` (обязательно).
-   - Скачать: [classicapi-1.20.zip](https://gitlab.com/Tsoukie/classicapi/-/archive/1.20/classicapi-1.20.zip)
 6. Включите оба на экране выбора персонажа и запустите игру. Введите `/tsm`, чтобы открыть.
 
 ### Совместимость
@@ -198,6 +183,7 @@ based on your groups, and empty your mailbox with a single click.
 <a name="благодарности"></a>
 ### Благодарности
 
-- Оригинальный аддон: **Команда TradeSkillMaster**
-- Бэкпорт под WotLK 3.3.5a: **Keoo**
+- Автор / бэкпорт под WotLK 3.3.5a: **Keoo**
+- Discord: **https://discord.gg/sKpJbUrsvR**
+- На основе оригинального **TradeSkillMaster**
 - Обязательный полифилл: **!!!ClassicAPI**
