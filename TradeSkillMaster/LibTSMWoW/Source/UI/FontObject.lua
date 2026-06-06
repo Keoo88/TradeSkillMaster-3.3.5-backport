@@ -70,8 +70,11 @@ function FontObject.__static.LoadPaths(overrides)
 	for _, fontType in pairs(TYPE) do
 		local path = overrides[private.alphabet] and overrides[private.alphabet][fontType] or DEFAULT_FONT_PATH[private.alphabet]
 		assert(path)
-		private.QueueFontLoad(path)
-		private.paths[fontType] = path
+		-- QueueFontLoad returns the font path that actually loaded; on 3.3.5a
+		-- ruRU clients missing FRIZQT___CYR.ttf this falls back to the stock
+		-- Roman font so every font string gets a valid font. Otherwise SetText
+		-- on those font strings throws a hard "Font not set" error and crashes.
+		private.paths[fontType] = private.QueueFontLoad(path)
 	end
 end
 
@@ -141,7 +144,7 @@ end
 
 function private.QueueFontLoad(path)
 	if private.loadFrame.texts[path] then
-		return
+		return private.loadFrame.texts[path].resolvedPath or path
 	end
 	local fontString = private.loadFrame:CreateFontString()
 	fontString:SetPoint("TOPRIGHT")
@@ -151,16 +154,22 @@ function private.QueueFontLoad(path)
 	-- missing on a client/locale (e.g. some ruRU clients lack FRIZQT___CYR.ttf).
 	-- Calling SetText on a font string with no font set throws a hard
 	-- "Font not set" error and crashes the UI, so fall back to the stock Roman
-	-- font and only set text once a font is actually applied.
+	-- font and only set text once a font is actually applied. We also return the
+	-- path that actually loaded so callers store a usable font path for every
+	-- font string, not just this preload frame.
+	local resolvedPath = path
 	local fontSet = fontString:SetFont(path, 6, "")
 	if not fontSet then
-		fontSet = fontString:SetFont("Fonts\\FRIZQT__.ttf", 6, "")
+		resolvedPath = "Fonts\\FRIZQT__.ttf"
+		fontSet = fontString:SetFont(resolvedPath, 6, "")
 	end
 	if fontSet then
 		fontString:SetText("1")
 	end
+	fontString.resolvedPath = resolvedPath
 	private.loadFrame.texts[path] = fontString
 	private.loadFrame:Show()
+	return resolvedPath
 end
 
 function private.LoadFrameOnUpdate(frame)
