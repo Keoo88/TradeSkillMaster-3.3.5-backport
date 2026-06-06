@@ -34,6 +34,32 @@ local ENGINEERING_FR = "Ingénieur"
 local ENGINEERING_SKILL_FR = "Ingénierie"
 local FIRST_AID_FR = "Premiers soins"
 local FIRST_AID_SKILL_FR = "Secourisme"
+-- 3.3.5a: на некоторых клиентах (в частности ruRU на Warmane) названия рангов
+-- профессий (Ученик/Подмастерье/Знаток/...) не совпадают с клиентскими
+-- константами APPRENTICE/JOURNEYMAN/..., из-за чего профессии переставали
+-- определяться вовсе. Дополнительно опознаём профессию по её локализованному
+-- имени, полученному из ID заклинаний (это не зависит от локали и рангов).
+local PROFESSION_SPELL_IDS = {
+	2259,  -- Alchemy
+	2018,  -- Blacksmithing
+	7411,  -- Enchanting
+	4036,  -- Engineering
+	45357, -- Inscription
+	25229, -- Jewelcrafting
+	2108,  -- Leatherworking
+	3908,  -- Tailoring
+	2575,  -- Mining
+	2656,  -- Smelting
+	2550,  -- Cooking
+	3273,  -- First Aid
+}
+local PROFESSION_NAMES = {}
+for _, professionSpellId in ipairs(PROFESSION_SPELL_IDS) do
+	local professionName = Spell.GetInfo(professionSpellId)
+	if professionName then
+		PROFESSION_NAMES[professionName] = true
+	end
+end
 
 
 
@@ -329,7 +355,10 @@ function private.GetProfessionInfo(name, subName)
 end
 
 function private.IsValidName(name, subName)
-	if TradeSkill.IsClassicSubName(strtrim(subName, " ")) then
+	if name and PROFESSION_NAMES[name] then
+		-- locale-independent: имя совпало с известной профессией (см. PROFESSION_NAMES)
+		return true
+	elseif TradeSkill.IsClassicSubName(strtrim(subName, " ")) then
 		return true
 	elseif name == TradeSkill.NAMES.SMELTING then
 		return true
