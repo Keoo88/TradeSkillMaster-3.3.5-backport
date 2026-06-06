@@ -147,8 +147,18 @@ function private.QueueFontLoad(path)
 	fontString:SetPoint("TOPRIGHT")
 	fontString:SetWidth(100)
 	fontString:SetHeight(6)
-	fontString:SetFont(path, 6, "")
-	fontString:SetText("1")
+	-- 3.3.5a: SetFont can fail (return false) when the requested font file is
+	-- missing on a client/locale (e.g. some ruRU clients lack FRIZQT___CYR.ttf).
+	-- Calling SetText on a font string with no font set throws a hard
+	-- "Font not set" error and crashes the UI, so fall back to the stock Roman
+	-- font and only set text once a font is actually applied.
+	local fontSet = fontString:SetFont(path, 6, "")
+	if not fontSet then
+		fontSet = fontString:SetFont("Fonts\\FRIZQT__.ttf", 6, "")
+	end
+	if fontSet then
+		fontString:SetText("1")
+	end
 	private.loadFrame.texts[path] = fontString
 	private.loadFrame:Show()
 end
