@@ -280,6 +280,9 @@ function ProfessionScrollTable.__protected:_IsValidSettingsKey(key)
 end
 
 function ProfessionScrollTable.__private:_HandleQueryUpdate()
+	if not self._query then
+		return
+	end
 	wipe(self._rawData)
 	wipe(self._isCraftString)
 
