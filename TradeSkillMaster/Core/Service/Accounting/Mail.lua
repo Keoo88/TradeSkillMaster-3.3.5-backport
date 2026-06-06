@@ -412,7 +412,9 @@ function private.GetItemLink(index, attachIndex)
 			end
 		end
 		if not foundIndex then
-			error(format("Invalid attachIndex for index %s", tostring(index)))
+			-- 3.3.5a: attachment data may not be loaded yet (mail still populating during
+			-- auto-loot); return nil so the caller retries gracefully instead of crashing
+			return nil
 		end
 		local speciesId, level, breedQuality = TooltipScanning.GetInboxBattlePetInfo(index, foundIndex)
 		if speciesId and speciesId > 0 then
