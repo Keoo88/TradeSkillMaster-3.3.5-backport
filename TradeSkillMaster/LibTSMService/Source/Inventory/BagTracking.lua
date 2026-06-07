@@ -638,6 +638,13 @@ function private.ScanBagSlot(bag, slot)
 	local itemString = ItemString.Get(link)
 	local levelItemString = itemString and ItemString.ToLevel(itemString)
 	local slotId = SlotId.Join(bag, slot)
+	-- 3.3.5: warm the info cache from the real bag link now. GetItemInfo-by-id polls the
+	-- server and stays nil until the item lands in the client cache, which races the post
+	-- scan (items show "?" and price sources return nil -> "Item/Group is invalid"). A held
+	-- item's link is already cached client-side, so this resolves name/vendorSell instantly.
+	if link then
+		ItemInfo.FetchInfoByLink(link)
+	end
 	local row = private.slotDB:GetUniqueRow("slotId", slotId)
 	if levelItemString then
 		local isWarBound = isBound and Container.CanDepositIntoWarbank(bag, slot)

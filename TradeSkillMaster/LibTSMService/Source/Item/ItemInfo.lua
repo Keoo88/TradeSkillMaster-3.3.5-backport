@@ -703,6 +703,41 @@ function ItemInfo.FetchInfo(item)
 	return true
 end
 
+---3.3.5: warm the info cache directly from a real item link.
+---
+---GetItemInfo by ID polls the server and returns nil until the item lands in the
+---client cache, which makes ID-based FetchInfo race against bag/post scans. An item
+---we actually hold (bag/bank/mail) is already in the client cache, so its live link
+---resolves GetItemInfo synchronously. Use that to fill name/quality/vendorSell now,
+---so the scan that follows sees valid data instead of "?" / nil price.
+---@param link string The real item link
+---@return boolean success Whether the cache was warmed
+function ItemInfo.FetchInfoByLink(link)
+	if type(link) ~= "string" then
+		return false
+	end
+	local itemString = ItemString.Get(link)
+	if not itemString or not ItemString.IsItem(itemString) then
+		return false
+	end
+	local baseItemString = ItemString.GetBaseFast(itemString)
+	if private.cache:GetField(baseItemString, "name") then
+		-- already cached
+		return true
+	end
+	local name, _, quality, itemLevel, minLevel, maxStack, vendorSell, isBOP, expansionId, isCraftingReagent = Item.GetInfo(link)
+	if not name or name == "" or not quality or quality < 0 then
+		return false
+	end
+	if not ClientInfo.HasFeature(ClientInfo.FEATURES.CRAFTING_QUALITY) then
+		expansionId = -1
+	end
+	private.StoreGetItemInfoInstant(baseItemString)
+	private.cache:SetQueriedFields(baseItemString, name, minLevel or 0, itemLevel or 0, maxStack or 1, vendorSell or 0, quality, isBOP or 0, isCraftingReagent and 1 or 0, expansionId or -1, -1)
+	return true
+end
+
+
 ---Generalize an item link.
 ---@param itemLink string The item link
 ---@return string?
