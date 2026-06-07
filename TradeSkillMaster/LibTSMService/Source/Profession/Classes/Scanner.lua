@@ -507,6 +507,16 @@ function private.ScanProfession()
 	end
 
 	local professionName = State.GetCurrentProfession()
+	if _G.TSMDBG then
+		_G.TSMDBG.Log("EnchScan", "ScanProfession prof=%s dataReady=%s isClassicCrafting=%s numCrafts=%s numTradeSkills=%s craftLine=%s tradeLine=%s",
+			tostring(professionName),
+			tostring(TradeSkill.IsDataReady()),
+			tostring(TradeSkill.IsClassicCrafting()),
+			tostring(_G.GetNumCrafts and _G.GetNumCrafts()),
+			tostring(_G.GetNumTradeSkills and _G.GetNumTradeSkills()),
+			tostring(_G.GetCraftSkillLine and _G.GetCraftSkillLine(1)),
+			tostring(_G.GetTradeSkillLine and _G.GetTradeSkillLine()))
+	end
 	if not professionName or not TradeSkill.IsDataReady() then
 		-- profession hasn't fully opened yet
 		private.QueueProfessionScan()
@@ -663,11 +673,24 @@ function private.ScanProfession()
 		private.PopulateClassicSpellIdLookup()
 		private.db:TruncateAndBulkInsertStart()
 		private.matDB:TruncateAndBulkInsertStart()
+		local dbgCount, dbgInvalid = 0, 0
 		for i, name, categoryId, difficulty in TradeSkill.RecipeIterator() do
 			local craftString = CraftString.Get(private.classicSpellIdLookup[-i])
 			local recipeScanResult, matScanResult = private.BulkInsertRecipe(craftString, i, name, categoryId, difficulty, -1, 1, 1, -1, -1, TradeSkill.RECIPE_TYPE.UNKNOWN)
 			haveInvalidRecipes = haveInvalidRecipes or not recipeScanResult
 			haveInvalidMats = haveInvalidMats or not matScanResult
+			dbgCount = dbgCount + 1
+			if _G.TSMDBG and (not recipeScanResult or not matScanResult) then
+				dbgInvalid = dbgInvalid + 1
+				if dbgInvalid <= 6 then
+					local resultItem, indirectSpellId = Scanner.GetResultItem(craftString)
+					_G.TSMDBG.Log("EnchScan", "INVALID i=%s name=%s cs=%s recipeOk=%s matOk=%s result=%s indirect=%s",
+						tostring(i), tostring(name), tostring(craftString), tostring(recipeScanResult), tostring(matScanResult), tostring(resultItem), tostring(indirectSpellId))
+				end
+			end
+		end
+		if _G.TSMDBG then
+			_G.TSMDBG.Log("EnchScan", "classic scan loop done iterated=%d invalid=%d", dbgCount, dbgInvalid)
 		end
 		private.matDB:BulkInsertEnd()
 		private.db:BulkInsertEnd()
