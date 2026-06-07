@@ -309,7 +309,7 @@ function private.ToItemString(item)
 	-- test if it's a shorter item string (without bonuses)
 	result = strjoin(":", strmatch(item, "(i)tem:([0-9%-]+):[0-9%-]*:[0-9%-]*:[0-9%-]*:[0-9%-]*:[0-9%-]*:([0-9%-]*)"))
 	if result and result ~= "" then
-		return result
+		return private.FixItemString(result)
 	end
 end
 
