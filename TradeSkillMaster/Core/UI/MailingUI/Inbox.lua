@@ -847,8 +847,10 @@ function private.FSMCreate()
 	end)
 
 	local function UpdateText(context, filterText)
-		-- 3.3.5: callback может прилететь когда frame ещё не достроен (нет footer/top).
-		if not context.frame or not context.frame:HasChildById("footer") then
+		-- 3.3.5: callback может прилететь когда frame ещё не достроен (нет footer/top),
+		-- или когда показан подэкран открытого письма ("items") — у него тоже есть
+		-- "footer", но без mailNum/itemNum. Проверяем наличие конкретного потомка.
+		if not context.frame or not context.frame:HasChildById("footer") or not context.frame:GetElement("footer"):HasChildById("mailNum") then
 			return
 		end
 		local text = nil
