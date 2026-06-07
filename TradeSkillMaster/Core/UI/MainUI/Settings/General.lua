@@ -64,7 +64,10 @@ local SETTING_TOOLTIPS = {
 	ignoreGuilds = L["Selecting any guild in this drop down will instruct TSM to disregard the contents of the guild bank for inventory tracking purposes."],
 	destroyValueSource = L["Select from any available price source in this drop down list to change the way TSM values the results of destroying an item (i.e disenchanting, prospecting, or milling)."],
 	auctionDBAltRealm = L["Loads AuctionDB data for an additional realm for display in the tooltip."],
+	language = L["Overrides the language TSM uses for its interface. 'Auto' uses your game client's language. Changing this requires reloading your UI."],
 }
+local LANGUAGE_LIST = { L["Auto (game default)"], "English", "Русский" }
+local LANGUAGE_KEYS = { "auto", "enUS", "ruRU" }
 
 
 
@@ -278,6 +281,27 @@ function private.GetGeneralSettingsFrame()
 					:SetScript("OnSelectionChanged", private.AltRealmOnSelectionChanged)
 				)
 				:AddChildIf(not ClientInfo.IsRetail(), UIElements.New("Spacer", "spacer"))
+			)
+			:AddChild(UIElements.New("Frame", "languageLabelLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(20)
+				:SetMargin(0, 0, 12, 4)
+				:AddChild(UIElements.New("Text", "languageLabel")
+					:SetFont("BODY_BODY2_MEDIUM")
+					:SetText(L["Addon Language (requires reload)"])
+				)
+			)
+			:AddChild(UIElements.New("Frame", "languageLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(24)
+				:AddChild(UIElements.New("SelectionDropdown", "languageDropdown")
+					:SetMargin(0, 16, 0, 0)
+					:SetItems(LANGUAGE_LIST, LANGUAGE_KEYS)
+					:SetSelectedItemByKey(private.GetCurrentLanguageKey(), true)
+					:SetScript("OnSelectionChanged", private.LanguageOnSelectionChanged)
+					:SetTooltip(SETTING_TOOLTIPS.language, "__parent")
+				)
+				:AddChild(UIElements.New("Spacer", "spacer"))
 			)
 		)
 		:AddChild(TSM.MainUI.Settings.CreateExpandableSection("General", "profiles", L["Profiles"], L["Set your active profile or create a new one."])
@@ -511,6 +535,24 @@ end
 
 function private.AltRealmOnSelectionChanged()
 	StaticPopupDialog.ShowWithOk(L["The alt realm selection will not take affect until you next log into the game or reload your UI."])
+end
+
+function private.GetCurrentLanguageKey()
+	return TSM.Locale.GetLanguageKey()
+end
+
+function private.LanguageOnSelectionChanged(dropdown)
+	local key = dropdown:GetSelectedItemKey()
+	if not key then
+		return
+	end
+	if key == private.GetCurrentLanguageKey() then
+		return
+	end
+	-- Store the selection (account-wide) and reload so every frame is rebuilt in
+	-- the newly selected language.
+	TSM.Locale.SetLanguageKey(key)
+	ReloadUI()
 end
 
 function private.ProfileRowOnEnter(frame)
