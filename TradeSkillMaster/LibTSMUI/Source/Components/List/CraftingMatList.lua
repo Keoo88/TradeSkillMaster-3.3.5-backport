@@ -88,6 +88,11 @@ function CraftingMatList:SetRecipeString(recipeString)
 	wipe(self._matString)
 
 	if recipeString then
+		-- 3.3.5: login-time BAG_UPDATE events for non-backpack bags are unreliable, so the
+		-- bag quantity DB can be empty even when the player owns the reagents. Force a
+		-- synchronous rescan so the crafting mat "have" counts are correct (same pattern the
+		-- Auctioning post scan uses).
+		BagTracking.RescanAllBags()
 		local craftString = CraftString.FromRecipeString(recipeString)
 		assert(not next(private.optionalMatTemp))
 		for _, matString, quantity in Profession.MatIterator(craftString) do
