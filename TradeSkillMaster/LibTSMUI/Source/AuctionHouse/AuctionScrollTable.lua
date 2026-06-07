@@ -1056,6 +1056,8 @@ end
 function AuctionScrollTable.__protected:_HandleRowAcquired(row)
 	self.__super:_HandleRowAcquired(row)
 	local item = row:GetText("item")
+	-- 3.3.5a: keep the item cell (incl. its embedded |T icon|t) on the OVERLAY layer so the row hover/selection highlight (ARTWORK, -1) doesn't cover the icon on mouseover
+	item:SetDrawLayer("OVERLAY")
 	local running = row:AddRotatingTexture("running")
 	running:TSMSetSize(RUNNING_TEXTURE)
 	running:SetPoint("LEFT", Theme.GetColSpacing() / 2, 0)
