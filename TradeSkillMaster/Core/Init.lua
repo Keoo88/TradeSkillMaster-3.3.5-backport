@@ -29,6 +29,11 @@ do
 
 	Lifecycle.RegisterCallback(function(event, maxTime)
 		if event == Lifecycle.EVENT.LOADED then
+			-- Apply the saved addon language before any module initializes so that
+			-- strings captured during OnInitialize (e.g. the settings page names
+			-- shown in the left navigation) use the selected language instead of
+			-- the game client's default locale.
+			TSM.Locale.ApplySavedLanguage()
 			TSM.LibTSMCore.LoadAll()
 			for _, component, path, moduleLoadTime in TSM.LibTSMCore.ModuleInfoIterator() do
 				if moduleLoadTime > TIME_WARNING_THRESHOLD then
