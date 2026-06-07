@@ -58,7 +58,22 @@ function Button:__init()
 	-- Create the highlight
 	frame.highlight = self:_CreateTexture(frame, "HIGHLIGHT")
 	frame.highlight:SetAllPoints()
-	frame:SetHighlightTexture(frame.highlight)
+	-- 3.3.5a: a texture placed on the "HIGHLIGHT" draw layer is NOT auto-gated by mouse-over on
+	-- this client (that gating only applies to a texture registered via SetHighlightTexture, and
+	-- passing a texture OBJECT to that API does not work here). Left alone, the highlight stays
+	-- visible at rest, so every button/tab looks permanently hovered. Manage it manually instead:
+	-- hidden by default, shown on mouse-over, kept shown while locked. HookScript is additive, so
+	-- it does NOT clobber the tooltip OnEnter/OnLeave handlers set via ScriptWrapper/SetScript.
+	frame.highlight:Hide()
+	frame._tsmHighlightLocked = false
+	frame:HookScript("OnEnter", function()
+		frame.highlight:Show()
+	end)
+	frame:HookScript("OnLeave", function()
+		if not frame._tsmHighlightLocked then
+			frame.highlight:Hide()
+		end
+	end)
 
 	-- Create the icon
 	frame.icon = self:_CreateTexture(frame, "ARTWORK")
@@ -82,8 +97,17 @@ function Button:Acquire()
 	-- Set the button state
 	self._state:PublisherForKeyChange("enabled")
 		:CallMethod(frame, "TSMSetEnabled")
+	-- 3.3.5a: drive the locked (selected) highlight manually since we no longer use the native
+	-- highlight texture (see __init). Locked => always show; unlocked => hide unless moused over.
 	self._state:PublisherForKeyChange("locked")
-		:CallMethod(frame, "TSMSetHighlightLocked")
+		:CallFunction(function(locked)
+			frame._tsmHighlightLocked = locked and true or false
+			if frame._tsmHighlightLocked then
+				frame.highlight:Show()
+			elseif not (frame.IsMouseOver and frame:IsMouseOver()) then
+				frame.highlight:Hide()
+			end
+		end)
 
 	-- Set whether or not the background is visible
 	self._state:PublisherForKeyChange("background")
