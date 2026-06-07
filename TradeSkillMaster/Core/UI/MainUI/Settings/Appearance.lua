@@ -551,11 +551,14 @@ function private.ColorOnMouseUp(frame)
 	ColorPickerFrame.previousValues.r = r
 	ColorPickerFrame.previousValues.g = g
 	ColorPickerFrame.previousValues.b = b
-	if ClientInfo.IsRetail() or ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic() then
-		ColorPickerFrame.swatchFunc = private.ColorPickerCallback
-	else
-		ColorPickerFrame.func = private.ColorPickerCallback
-	end
+	-- On Warmane 3.3.5a the native ColorPickerOkayButton:OnClick calls
+	-- ColorPickerFrame.func() (classic API), while modern Wrath-Classic builds
+	-- use swatchFunc. ClientInfo.IsWrathClassic() is true on this backport, so
+	-- only setting swatchFunc left func nil and the OK button errored with
+	-- "attempt to call field 'func' (a nil value)". Set both so whichever field
+	-- the running client invokes will fire the callback.
+	ColorPickerFrame.swatchFunc = private.ColorPickerCallback
+	ColorPickerFrame.func = private.ColorPickerCallback
 	ColorPickerFrame.cancelFunc = private.ColorPickerCancelCallback
 	ColorPickerFrame:ClearAllPoints()
 	local baseFrame = frame:GetBaseElement():_GetBaseFrame()
