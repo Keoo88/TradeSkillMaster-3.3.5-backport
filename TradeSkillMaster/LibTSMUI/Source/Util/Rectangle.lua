@@ -198,7 +198,17 @@ function Rectangle.__private:_LayoutTextures()
 end
 
 function Rectangle.__private:_CreateTexture(subLayer)
-	local texture = WidgetExtensions.CreateTexture(self._frame, "BACKGROUND", subLayer or 0)
+	subLayer = subLayer or 0
+	-- On 3.3.5a the texture drawSubLevel argument (4th param of CreateTexture, added in
+	-- Cataclysm 4.0) is not honored, so two stacked rectangles on the same draw layer
+	-- (e.g. a Frame's border at subLayer 0 and its inset background at subLayer 1) do not
+	-- render in the intended order - the border ends up drawn over the background, so every
+	-- bordered frame shows its border color instead of its background color. Map the subLayer
+	-- onto a real draw layer, which the client always respects. BACKGROUND < BORDER keeps the
+	-- background above the border while staying below the ARTWORK/OVERLAY layers used for
+	-- content (text, icons). Passing subLayer too is harmless on clients that do support it.
+	local layer = subLayer >= 1 and "BORDER" or "BACKGROUND"
+	local texture = WidgetExtensions.CreateTexture(self._frame, layer, subLayer)
 	texture:TSMSetCancellablesTable(self._cancellables)
 	texture:SetBlendMode("BLEND")
 	return texture
