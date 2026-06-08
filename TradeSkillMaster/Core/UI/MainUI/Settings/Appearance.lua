@@ -21,6 +21,7 @@ local private = {
 	frame = nil,
 	settings = nil,
 	currentThemeKey = nil,
+	colorSelectHooked = nil,
 }
 local MAGIC_STR = "TSM_THEME_EXPORT"
 local VERSION = 1
@@ -440,18 +441,27 @@ function private.ImportInputOnValueChanged(input)
 		ChatMessage.PrintUser(L["The pasted value was not valid. Ensure you are pasting the entire import string."])
 		return
 	end
+	-- Apply the imported colors first. Opening the import dialog hides the
+	-- Appearance scroll frame (its OnHide nils private.frame on this 3.3.5a
+	-- client), so guard every frame-element update and only touch them while
+	-- the Appearance frame is still alive. The colors themselves are applied
+	-- regardless and will show correctly when navigating back to Appearance.
 	for key, hexColor in pairs(themeSet) do
 		local r, g, b = private.HexToRGB(hexColor)
 		TSM.UI.Util.SetCustomColor(key, r, g, b)
-		private.frame:GetElement("custom."..key..".frame.text")
-			:SetText(strupper(format("#%02x%02x%02x", r, g, b)))
-			:Draw()
+		if private.frame then
+			private.frame:GetElement("custom."..key..".frame.text")
+				:SetText(strupper(format("#%02x%02x%02x", r, g, b)))
+				:Draw()
+		end
 	end
 	baseFrame:HideDialog()
-	local themeContainer = private.frame:GetElement("theme")
-	themeContainer:ReleaseAllChildren()
-	themeContainer:AddChildrenWithFunction(private.CreateThemes)
-	themeContainer:Draw()
+	if private.frame then
+		local themeContainer = private.frame:GetElement("theme")
+		themeContainer:ReleaseAllChildren()
+		themeContainer:AddChildrenWithFunction(private.CreateThemes)
+		themeContainer:Draw()
+	end
 end
 
 function private.DecodeThemeImport(str)
@@ -560,6 +570,14 @@ function private.ColorOnMouseUp(frame)
 	ColorPickerFrame.swatchFunc = private.ColorPickerCallback
 	ColorPickerFrame.func = private.ColorPickerCallback
 	ColorPickerFrame.cancelFunc = private.ColorPickerCancelCallback
+	-- On this 3.3.5a client the native OnColorSelect does NOT call func, so
+	-- picking/dragging a color produced no live change and the result only
+	-- relied on the OK button. Hook OnColorSelect (once) to apply the picked
+	-- color live while our custom-color picker is the active consumer.
+	if not private.colorSelectHooked then
+		ColorPickerFrame:HookScript("OnColorSelect", private.ColorPickerOnColorSelect)
+		private.colorSelectHooked = true
+	end
 	ColorPickerFrame:ClearAllPoints()
 	local baseFrame = frame:GetBaseElement():_GetBaseFrame()
 	local x, y = baseFrame:GetLeft() + (baseFrame:GetWidth() / 2), baseFrame:GetTop() - (baseFrame:GetHeight() / 2) - UIParent:GetHeight()
@@ -572,7 +590,23 @@ function private.ColorOnMouseUp(frame)
 end
 
 function private.ColorPickerCallback()
-	private.SetCurrentThemeColor(ColorPickerFrame:GetColorRGB())
+	local r, g, b = ColorPickerFrame:GetColorRGB()
+	private.SetCurrentThemeColor(r, g, b)
+end
+
+function private.ColorPickerOnColorSelect()
+	-- Only react while our custom-color picker is the active consumer.
+	if not private.currentThemeKey then return end
+	if ColorPickerFrame.func ~= private.ColorPickerCallback then return end
+	local r, g, b = ColorPickerFrame:GetColorRGB()
+	r = Math.Round(r * 255)
+	g = Math.Round(g * 255)
+	b = Math.Round(b * 255)
+	TSM.UI.Util.SetCustomColor(private.currentThemeKey, r, g, b)
+	if not private.frame then return end
+	private.frame:GetElement("custom."..private.currentThemeKey..".frame.text")
+		:SetText(strupper(format("#%02x%02x%02x", r, g, b)))
+		:Draw()
 end
 
 function private.ColorPickerCancelCallback(prev)
@@ -580,11 +614,17 @@ function private.ColorPickerCancelCallback(prev)
 end
 
 function private.SetCurrentThemeColor(r, g, b)
-	if not private.frame then return end
+	if not private.currentThemeKey then return end
 	r = Math.Round(r * 255)
 	g = Math.Round(g * 255)
 	b = Math.Round(b * 255)
+	-- Apply the color BEFORE touching any frame elements. On this 3.3.5a client
+	-- the Appearance scroll frame's OnHide fires while the native ColorPickerFrame
+	-- is opening, which nils private.frame. Gating the actual color application on
+	-- private.frame meant the picked color was never applied. Only the optional
+	-- swatch text and theme-preview rebuild need a live frame.
 	TSM.UI.Util.SetCustomColor(private.currentThemeKey, r, g, b)
+	if not private.frame then return end
 	private.frame:GetElement("custom."..private.currentThemeKey..".frame.text")
 		:SetText(strupper(format("#%02x%02x%02x", r, g, b)))
 		:Draw()
