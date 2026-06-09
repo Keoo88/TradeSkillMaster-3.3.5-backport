@@ -210,8 +210,21 @@ function BaseDropdown.__protected:_CreateDialog()
 	width = max(width, self:_GetDimension("WIDTH"))
 	local dialog = UIElements.New("DropdownDialog", "dropdown")
 		:SetContext(self)
-		:AddAnchor("TOPLEFT", self, "BOTTOMLEFT", 0, -4)
 		:SetSize(width, height)
+	-- 3.3.5 backport: the list used to always open straight down from the control, so when
+	-- the dropdown sat near the bottom of the TSM window the list extended past the frame
+	-- and the lower options were cut off / invisible. Flip the list upward when there isn't
+	-- enough room below it. The control and the dialog share the same effective scale (both
+	-- live inside the application content frame), so GetBottom() (distance from the bottom
+	-- of the screen) and the dialog height are in the same coordinate units and can be
+	-- compared directly.
+	local frame = self:_GetBaseFrame()
+	local spaceBelow = frame:GetBottom()
+	if spaceBelow and spaceBelow < (height + 4) then
+		dialog:AddAnchor("BOTTOMLEFT", self, "TOPLEFT", 0, 4)
+	else
+		dialog:AddAnchor("TOPLEFT", self, "BOTTOMLEFT", 0, -4)
+	end
 	return dialog
 end
 
