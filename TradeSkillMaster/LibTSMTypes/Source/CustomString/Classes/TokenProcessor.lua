@@ -181,6 +181,7 @@ function TokenProcessor.__private:_ProcessAction(parent, action, tokenIndex)
 	local nodeValue = tokenIndex ~= -1 and self._tokenList:GetRowField(tokenIndex, "str") or ""
 	local node = self._tree:Insert(parent, nodeType, nodeValue, tokenIndex)
 	local negateExpressionNode = nil
+	local negateTokenIndex = nil
 	while true do
 		local success
 		success, action, tokenIndex = self:_GetNextAction()
@@ -188,7 +189,10 @@ function TokenProcessor.__private:_ProcessAction(parent, action, tokenIndex)
 			return false
 		end
 		if (isExpression and action == AST_ACTION.END_EXPRESSION) or (not isExpression and action == AST_ACTION.END_FUNCTION) then
-			assert(not negateExpressionNode)
+			if negateExpressionNode then
+				self:_HandleErrorForToken(Types.ERROR.INVALID_TOKEN, negateTokenIndex)
+				return false
+			end
 			break
 		elseif action == AST_ACTION.ADD_NODE then
 			local tokenType, tokenStr = self._tokenList:GetRow(tokenIndex)
@@ -220,6 +224,7 @@ function TokenProcessor.__private:_ProcessAction(parent, action, tokenIndex)
 				negateExpressionNode = nil
 			end
 		elseif action == AST_ACTION.NEGATE_NEXT then
+			negateTokenIndex = tokenIndex
 			negateExpressionNode = self._tree:Insert(node, INTERNAL_AST_NODE.EXPRESSION, "", -1)
 			self._tree:Insert(negateExpressionNode, Types.NODE.CONSTANT, 0, -1)
 			self._tree:Insert(negateExpressionNode, INTERNAL_AST_NODE.OPERATOR, "-", -1)
