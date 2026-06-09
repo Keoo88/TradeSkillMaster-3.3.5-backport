@@ -627,19 +627,12 @@ end
 
 function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 	self._cancelled = false
-	if TSMDBG then
-		TSMDBG.Log("ScanManager", "=== FindAuctionClassic START ===")
-		TSMDBG.Log("ScanManager", "FindAuctionClassic noSeller=%s want{link=%s buy=%s qty=%s owner='%s'}",
-			tostring(noSeller),
-			tostring(row._itemLink), tostring(row._buyout), tostring(row._quantity), tostring(row._ownerStr))
-	end
 	-- 3.3.5: ждём CanSendQuery с таймаутом.
 	local waitStart = GetTime and GetTime() or 0
 	local maxWait = 5
 	while not AuctionHouse.CanSendQuery() do
 		Threading.Yield(true)
 		if (GetTime and GetTime() or 0) - waitStart > maxWait then
-			if TSMDBG then TSMDBG.Warn("ScanManager", "FindAuctionClassic: CanSendQuery timeout after %ds", maxWait) end
 			break
 		end
 	end
@@ -649,13 +642,9 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 	-- pass 2: noSeller=true (если seller на сервере не успел резолвнуться, либо изменился)
 	for passNoSeller = 0, 1 do
 		local passFlag = passNoSeller == 1 or noSeller
-		if TSMDBG and passNoSeller == 1 then
-			TSMDBG.Log("ScanManager", "FindAuctionClassic pass2 (noSeller=true)")
-		end
 		-- search the current page for the auction first (cheap)
 		wipe(self._findResult)
 		if self:_FindAuctionOnCurrentPage(row, passFlag) then
-			if TSMDBG then TSMDBG.Log("ScanManager", "FindAuctionClassic FOUND on current page (#%d)", #self._findResult) end
 			return self._findResult
 		end
 
@@ -668,16 +657,17 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 			end
 			local itemString = row:GetItemString()
 			if not itemString then
-				if TSMDBG then TSMDBG.Warn("ScanManager", "FindAuctionClassic itemString=nil, aborting") end
 				return nil
 			end
-			local level = ItemInfo.GetMinLevel(itemString)
-			local quality = ItemInfo.GetQuality(itemString)
 			local nameStr = ItemInfo.GetName(itemString) or row._itemLink and row._itemLink:match("%[(.-)%]") or ""
+			-- 3.3.5: NAME-only exact query. Do NOT add SetClass / SetQualityRange /
+			-- SetLevelRange here. On 3.3.5 the AH class/subclass filter args are auction
+			-- CATEGORY indices (not item class ids), so SetClass makes QueryAuctionItems
+			-- return 0 auctions. This fallback runs whenever the lot is no longer on the
+			-- visible page (e.g. the page got refreshed after buying the previous lot),
+			-- so a broken query here makes the find return nil and the lot "vanishes"
+			-- from the results. Exact name + SetItems locates the lot reliably.
 			self._findQuery = AuctionQuery.Get():SetStr(nameStr, true)
-			if quality and quality > 0 then self._findQuery:SetQualityRange(quality, quality) end
-			if level and level > 0 then self._findQuery:SetLevelRange(level, level) end
-			self._findQuery:SetClass(ItemInfo.GetClassId(itemString), ItemInfo.GetSubClassId(itemString))
 				:SetItems(itemString)
 				:SetResolveSellers(not passFlag)
 				:SetPage(page)
@@ -687,16 +677,12 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 				self._findQuery = nil
 			end
 			if not filterSuccess then
-				if TSMDBG then TSMDBG.Warn("ScanManager", "FindAuctionClassic _DoBrowse failed page=%d", page) end
 				break
 			end
 			wipe(self._findResult)
 			if self:_FindAuctionOnCurrentPage(row, passFlag) then
-				if TSMDBG then TSMDBG.Log("ScanManager", "FindAuctionClassic FOUND page=%d (#%d, noSeller=%s)",
-					page, #self._findResult, tostring(passFlag)) end
 				return self._findResult
 			elseif self._cancelled then
-				if TSMDBG then TSMDBG.Warn("ScanManager", "FindAuctionClassic cancelled at page=%d", page) end
 				return nil
 			end
 			local numPages = AuctionHouse.GetNumPages()
@@ -717,7 +703,6 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 			break
 		end
 	end
-	if TSMDBG then TSMDBG.Warn("ScanManager", "FindAuctionClassic exhausted both passes, lot likely sold") end
 	return nil
 end
 
@@ -765,20 +750,11 @@ end
 function AuctionScanManager.__private:_FindAuctionOnCurrentPage(subRow, noSeller)
 	local found = false
 	local total = AuctionHouse.GetNumAuctions() or 0
-	if TSMDBG then
-		TSMDBG.Log("ScanManager", "_FindAuctionOnCurrentPage: checking %d auctions, noSeller=%s", total, tostring(noSeller))
-	end
 	for i = 1, total do
 		if subRow:EqualsIndex(i, noSeller) then
 			tinsert(self._findResult, i)
 			found = true
-			if TSMDBG then
-				TSMDBG.Log("ScanManager", "_FindAuctionOnCurrentPage: FOUND at index %d", i)
-			end
 		end
-	end
-	if TSMDBG and not found then
-		TSMDBG.Log("ScanManager", "_FindAuctionOnCurrentPage: NOT FOUND after checking %d auctions", total)
 	end
 	return found
 end
