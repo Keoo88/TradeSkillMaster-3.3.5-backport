@@ -67,8 +67,6 @@ function FindThread.StartFindAuction(auctionScan, auction, callback, noSeller)
 
 		-- Guard: incomplete data
 		if not itemLink or not stackSize or not buyout then
-			if TSMDBG then TSMDBG.Log("FindThread", "EqualsIndex(%d) INCOMPLETE link=%s qty=%s buy=%s",
-				index, tostring(itemLink), tostring(stackSize), tostring(buyout)) end
 			return false
 		end
 
@@ -76,34 +74,24 @@ function FindThread.StartFindAuction(auctionScan, auction, callback, noSeller)
 		local baseItemString = ItemString.Get(itemLink)
 		local selfBaseItemString = ItemString.Get(self._itemLink)
 		if not baseItemString or not selfBaseItemString or baseItemString ~= selfBaseItemString then
-			if TSMDBG then TSMDBG.Log("FindThread", "EqualsIndex(%d) BASE FAIL want=%s got=%s",
-				index, tostring(selfBaseItemString), tostring(baseItemString)) end
 			return false
 		end
 
 		-- 2. Buyout
 		if buyout ~= self._buyout then
-			if TSMDBG then TSMDBG.Log("FindThread", "EqualsIndex(%d) BUYOUT FAIL want=%d got=%d  (per-unit want=%d got=%d)",
-				index, self._buyout, buyout,
-				self._quantity > 0 and math.floor(self._buyout / self._quantity) or 0,
-				stackSize > 0 and math.floor(buyout / stackSize) or 0) end
 			return false
 		end
 
 		-- 3. StackSize exact
 		if stackSize ~= self._quantity then
-			if TSMDBG then TSMDBG.Log("FindThread", "EqualsIndex(%d) QTY FAIL want=%d got=%d", index, self._quantity, stackSize) end
 			return false
 		end
 
 		-- 4. Seller optional
 		if not noSeller and seller ~= "?" and self._ownerStr ~= "?" and seller ~= self._ownerStr then
-			if TSMDBG then TSMDBG.Log("FindThread", "EqualsIndex(%d) SELLER FAIL want='%s' got='%s'",
-				index, tostring(self._ownerStr), tostring(seller)) end
 			return false
 		end
 
-		if TSMDBG then TSMDBG.Log("FindThread", "EqualsIndex(%d) MATCH", index) end
 		return true
 	end
 

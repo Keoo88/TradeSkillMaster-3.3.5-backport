@@ -350,12 +350,7 @@ end
 ---@param page number The page
 ---@return Future?
 function AuctionHouseWrapper.SendQuery(str, class, subClass, invType, minLevel, maxLevel, minQuality, maxQuality, uncollected, usable, upgrades, exact, page, getAll)
-	TSMDBG.Log("AHWrap", "SendQuery str=%s class=%s subClass=%s invType=%s page=%s getAll=%s",
-		tostring(str), tostring(class), tostring(subClass), tostring(invType), tostring(page), tostring(getAll))
-
 	if not private.CheckAllIdle() or not AuctionHouse.CanSendQuery() then
-		TSMDBG.Log("AHWrap", "SendQuery BLOCKED CheckAllIdle=%s CanSendQuery=%s",
-			tostring(private.CheckAllIdle()), tostring(AuctionHouse.CanSendQuery()))
 		return
 	end
 
@@ -430,10 +425,6 @@ function AuctionHouseWrapper.SendQuery(str, class, subClass, invType, minLevel, 
 		if #classFiltersTemp > 0 then
 			local modernClassID = classFiltersTemp[1].classID
 			classIndex = MODERN_TO_AH_CLASSIC_INDEX[modernClassID]
-			if not classIndex and modernClassID then
-				TSMDBG.Log("AHWrap", "no AH classIndex for modern classID=%s, dropping class filter",
-					tostring(modernClassID))
-			end
 			-- subClassID on 3.3.5 is also 1-based positional into
 			-- GetAuctionItemSubClasses(classIndex); we don't have a generic
 			-- translation table for it, so drop it. Items get post-filtered
@@ -441,8 +432,6 @@ function AuctionHouseWrapper.SendQuery(str, class, subClass, invType, minLevel, 
 			subclassIndex = nil
 			invTypeIndex = classFiltersTemp[1].inventoryType
 		end
-		TSMDBG.Log("AHWrap", "QueryAuctionItems name=%s page=%s class=%s sub=%s qual=%s getAll=%s",
-			tostring(str), tostring(page), tostring(classIndex), tostring(subclassIndex), tostring(minQuality), tostring(getAllFlag))
 		return private.wrappers.QueryAuctionItems:Start(str, minLevel, maxLevel, invTypeIndex, classIndex, subclassIndex, page, usable, minQuality, getAllFlag)
 	end
 end
@@ -642,8 +631,6 @@ end
 ---@param useEmptySorts boolean Use an empty sorts list
 ---@return boolean
 function AuctionHouseWrapper.SetSort(useEmptySorts)
-	TSMDBG.Log("AHWrap", "SetSort useEmptySorts=%s isWrath=%s", tostring(useEmptySorts), tostring(LibTSMWoW.IsWrathClassic()))
-
 	if not LibTSMWoW.IsVanillaClassic() and not LibTSMWoW.IsBCClassic() and not LibTSMWoW.IsWrathClassic() then
 		return true
 	end
@@ -826,9 +813,6 @@ function APIWrapper:_HandleEvent(eventName, ...)
 	if not eventIsValid then
 		Log.Info("Ignoring invalidated event (%s)", eventName)
 		return
-	end
-	if self._name == "PostAuction" then
-		print(string.format("DEBUG PostAuction done: result=%s", tostring(result)))
 	end
 	self:_Done(result)
 end
@@ -1029,11 +1013,6 @@ function private.RegisterForEvent(eventName, wrapper)
 end
 
 function private.EventHandler(eventName, ...)
-	-- Debug for posting diagnostics
-	if eventName:match("AUCTION_MULTISELL") or (eventName == "CHAT_MSG_SYSTEM" and select(1, ...) == ERR_AUCTION_STARTED) then
-		print(string.format("DEBUG EventHandler: %s args: %s", eventName, private.ArgsToStr(...)))
-	end
-
 	-- reduce the log spam of generic events by combining the message with the name and discarding arguments
 	if eventName == "UI_ERROR_MESSAGE" and select(1, ...) == ERR_AUCTION_DATABASE_ERROR then
 		-- log an analytics event for "Internal Auction Error" messages

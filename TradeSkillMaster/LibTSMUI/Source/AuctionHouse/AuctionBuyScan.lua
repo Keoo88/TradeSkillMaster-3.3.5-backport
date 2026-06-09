@@ -551,34 +551,6 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			state.selectionCanBuy = not isPlayerOrAlt and state.auctionScan:CanBuy(selection)
 			state.selectionCanCancel = (not LibTSMUI.IsVanillaClassic() and not LibTSMUI.IsBCClassic() and not LibTSMUI.IsWrathClassic()) and self._isPlayerFunc(ownerStr, false)
 			state.findHashIsSelection = state.findHash == selection:GetHashes()
-			-- Diagnostic dump under TSMDBG: shows why Buy/Bid would be grey on classic.
-			-- Off by default; enable with /run TSMDBG = TSMDBG or {} to surface again.
-			if TSMDBG and (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic()) then
-				local buyout, itemBuyout = selection:GetBuyouts()
-				local money = Currency.GetMoney()
-				local canQuery = AuctionHouse.CanSendQuery()
-				local qty = selection:GetQuantities()
-				local reason
-				if isPlayerOrAlt then reason = "OWN_LOT(owner="..tostring(ownerStr)..")"
-				elseif not buyout or buyout == 0 then reason = "BID_ONLY(buy="..tostring(buyout)..")"
-				elseif money < buyout then
-					local g = math.floor(buyout / 10000)
-					local s = math.floor((buyout % 10000) / 100)
-					local c = buyout % 100
-					local hg = math.floor(money / 10000)
-					reason = string.format("NO_MONEY(stack=%dg%ds%dc qty=%d perUnit=%dc have=%dg)",
-						g, s, c, qty or 0, itemBuyout or 0, hg)
-				elseif not state.selectionCanBuy then reason = "CanBuy=false (other check failed)"
-				else reason = "OK"
-				end
-				print(string.format("|cFFFFA500TSM Buy:|r %s | canBuy=%s pendingFuture=%s pausePending=%s scanPaused=%s canQuery=%s",
-					reason,
-					tostring(state.selectionCanBuy),
-					tostring(state.pendingFuture ~= nil),
-					tostring(state.pausePending),
-					tostring(state.scanIsPaused),
-					tostring(canQuery)))
-			end
 		else
 			state.selectedAuction = selection
 			state.selectionCanBid = false
@@ -610,7 +582,6 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			-- 3.3.5: hash может меняться async (seller resolve меняет _ownerStr).
 			-- Не делаем рекурсивный find — это вызывает infinite loop.
 			if LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic() then
-				if TSMDBG then TSMDBG.Warn("BuyScan", "findHash changed on classic, accepting result anyway") end
 				state.findHash = state.selectedAuction:GetHashes()
 			else
 				-- Find the new selected auction
@@ -661,13 +632,6 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			if state.selectedAuction:IsSubRow() then
 				-- Failed to find this auction, so remove it
 				local _, rawLink = state.selectedAuction:GetLinks()
-				if TSMDBG then
-					TSMDBG.Warn("BuyScan", "FIND FAILED -> removing subRow link=%s buy=%s qty=%s owner=%s",
-						tostring(rawLink),
-						tostring(state.selectedAuction._buyout),
-						tostring(state.selectedAuction._quantity),
-						tostring(state.selectedAuction._ownerStr))
-				end
 				state.selectedAuction:GetResultRow():RemoveSubRow(state.selectedAuction)
 				ChatMessage.PrintfUser(L["Failed to find auction for %s, so removing it from the results."], rawLink)
 			elseif state.scanIsPaused then
@@ -698,23 +662,12 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		state.findHashIsSelection = true
 	elseif action == "ACTION_BUY_AUCTION" then
 		local selection = state.auctionScrollTable:GetSelectedRow()
-		if TSMDBG then
-			TSMDBG.Dump("auto:BUY_AUCTION click", {
-				hasSelection = selection ~= nil,
-				isSubRow = selection and selection.IsSubRow and selection:IsSubRow() or false,
-				findResult = state.findResult,
-				findHash = state.findHash,
-				pendingBuyOnFind = state.pendingBuyOnFind,
-				selectionCanBuy = state.selectionCanBuy,
-			})
-		end
 		-- 3.3.5: proactive find disabled. If findDeferred is set, run find-on-demand
 		-- now and have ACTION_HANDLE_FIND_RESULT replay the buy via pendingBuyOnFind.
 		-- Pause the main scan first — FindThread shares the AuctionScanManager and
 		-- can't send its per-item query while the main scan still holds requestFuture.
 		if (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic())
 			and (state.findDeferred or not state.findResult) then
-			if TSMDBG then TSMDBG.Log("BuyScan", "Buy clicked, pausing scan + running find-on-demand") end
 			state.findDeferred = false
 			state.findResult = nil
 			state.pendingBuyOnFind = true
@@ -751,9 +704,6 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			local ok = state.selectedAuction:EqualsIndex(index, false)
 			if not ok then
 				ok = state.selectedAuction:EqualsIndex(index, true)
-				if TSMDBG and ok then
-					TSMDBG.Log("BuyScan", "BUY revalidate idx=%d matched only with noSeller", index)
-				end
 			end
 			if not ok then
 				-- Lot vanished between find and confirm. Don't loop through another find
@@ -761,13 +711,6 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				-- per-item walk). Just remove the row and clear the selection — same UX
 				-- as a real find failure, but immediate.
 				local _, rawLink = state.selectedAuction:GetLinks()
-				if TSMDBG then
-					local _, pageLink, pageQty, _, pageBuy = AuctionHouse.GetBrowseResult(index)
-					TSMDBG.Warn("BuyScan", "BUY ABORT idx=%d stale: want{link=%s buy=%s qty=%s} got{link=%s buy=%s qty=%s}",
-						index,
-						tostring(state.selectedAuction._itemLink), tostring(state.selectedAuction._buyout), tostring(state.selectedAuction._quantity),
-						tostring(pageLink), tostring(pageBuy), tostring(pageQty))
-				end
 				ChatMessage.PrintfUser(L["Failed to buy auction of %s."], rawLink)
 				if state.selectedAuction:IsSubRow() then
 					state.selectedAuction:GetResultRow():RemoveSubRow(state.selectedAuction)
@@ -849,7 +792,6 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		local selection = state.auctionScrollTable:GetSelectedRow()
 		if (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic())
 			and (state.findDeferred or not state.findResult) then
-			if TSMDBG then TSMDBG.Log("BuyScan", "Bid clicked, pausing scan + running find-on-demand") end
 			state.findDeferred = false
 			state.findResult = nil
 			state.pendingBidOnFind = true
