@@ -35,7 +35,7 @@ function CraftingOperation.Load(localizedName, validateCraftPriceMethodFunc)
 	local operationType = Operation.NewType(OPERATION_TYPE, localizedName, 1)
 		:AddCustomStringSetting("minRestock", "10")
 		:AddCustomStringSetting("maxRestock", "20")
-		:AddCustomStringSetting("minProfit", "100g")
+		:AddCustomStringSetting("minProfit", "10g")
 		:AddCustomStringSetting("craftPriceMethod", "")
 	Operation.RegisterType(operationType)
 	for _, operationName in Operation.Iterator(OPERATION_TYPE) do
