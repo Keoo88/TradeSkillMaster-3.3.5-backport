@@ -7,8 +7,16 @@
 local LibTSMWoW = select(2, ...).LibTSMWoW
 local Item = LibTSMWoW:Init("API.Item")
 local ItemClass = LibTSMWoW:Include("Util.ItemClass")
+local private = {
+	cacheTooltip = nil,
+	cacheRequestTimes = {},
+	cacheRequestWindowStart = 0,
+	cacheRequestWindowCount = 0,
+}
 local MAX_STACK_SIZE = 4000
 local MAX_ITEM_LEVEL = 700
+local CACHE_REQUEST_COOLDOWN = 5
+local MAX_CACHE_REQUESTS_PER_SEC = 20
 
 
 
@@ -88,6 +96,40 @@ function Item.GetInfoInstant(itemId)
 		invSlotId = 0
 	end
 	return texture, classId, subClassId, invSlotId
+end
+
+---Forces the client to request item data from the server (3.3.5 only).
+---On 3.3.5 GetItemInfo() does NOT query the server for uncached items (and there's
+---no GET_ITEM_INFO_RECEIVED event), so polling GetItemInfo never resolves them.
+---Setting an item hyperlink on a hidden tooltip triggers the server item query;
+---once the server responds, the item lands in the client cache and the regular
+---GetItemInfo polling picks it up. Throttled per item to avoid query spam.
+---@param itemId number The item ID
+function Item.RequestServerCache(itemId)
+	if LibTSMWoW.IsRetail() or not itemId then
+		return
+	end
+	local now = GetTime()
+	local lastRequest = private.cacheRequestTimes[itemId]
+	if lastRequest and now - lastRequest < CACHE_REQUEST_COOLDOWN then
+		return
+	end
+	-- Global throttle so a huge pending queue can't flood the server with item queries
+	if now - private.cacheRequestWindowStart >= 1 then
+		private.cacheRequestWindowStart = now
+		private.cacheRequestWindowCount = 0
+	end
+	if private.cacheRequestWindowCount >= MAX_CACHE_REQUESTS_PER_SEC then
+		return
+	end
+	private.cacheRequestWindowCount = private.cacheRequestWindowCount + 1
+	private.cacheRequestTimes[itemId] = now
+	if not private.cacheTooltip then
+		private.cacheTooltip = CreateFrame("GameTooltip", "TSMItemCacheRequestTooltip", UIParent, "GameTooltipTemplate")
+	end
+	private.cacheTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+	pcall(private.cacheTooltip.SetHyperlink, private.cacheTooltip, "item:"..itemId..":0:0:0:0:0:0:0")
+	private.cacheTooltip:Hide()
 end
 
 ---Gets the detailed item level for an item.

@@ -1128,6 +1128,12 @@ function private.StoreGetItemInfo(itemString)
 		end
 	end
 
+	if not gotInfo and not LibTSMService.IsRetail() then
+		-- 3.3.5: GetItemInfo() doesn't query the server for uncached items, so force
+		-- the query via a hidden tooltip; the regular polling will then pick it up
+		Item.RequestServerCache(ItemString.ToId(baseItemString))
+	end
+
 	return gotInfo
 end
 
