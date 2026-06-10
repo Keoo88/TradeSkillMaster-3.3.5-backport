@@ -166,4 +166,44 @@ SlashCmdList["TSMSTATE"] = function()
 	print("Snapshot saved. Use ReloadUI to flush to TSMDebugDB.")
 end
 
-TSMDBG.Log("CMD", "Slash commands registered: /tsmenv /tsmscan /tsmrows /tsmstate")
+-- /tsmmail — дамп классификации писем в открытом ящике (диагностика Ledger/Accounting)
+-- Открыть почтовый ящик и выполнить. Показывает, видит ли клиент invoice-данные
+-- аукционных писем (без них покупки/продажи не попадают в Ledger).
+SLASH_TSMMAIL1 = "/tsmmail"
+SlashCmdList["TSMMAIL"] = function()
+	if not GetInboxNumItems then
+		print("|cffff8800TSMDBG:|r mail API not available")
+		return
+	end
+	local num = GetInboxNumItems()
+	print(("|cff00ff00TSMDBG:|r inbox has %d mails"):format(num))
+	local snapshot = {}
+	for i = 1, num do
+		local _, _, sender, subject, money, cod, daysLeft, numItems = GetInboxHeaderInfo(i)
+		local invoiceType, itemName, playerName, bid, buyout, deposit, consignment = GetInboxInvoiceInfo(i)
+		local line = ("#%d subj=%q sender=%s money=%s cod=%s items=%s | invoice: type=%s item=%s player=%s bid=%s buyout=%s deposit=%s cut=%s"):format(
+			i, tostring(subject), tostring(sender), tostring(money), tostring(cod), tostring(numItems),
+			tostring(invoiceType), tostring(itemName), tostring(playerName), tostring(bid), tostring(buyout), tostring(deposit), tostring(consignment))
+		print("  " .. line)
+		tinsert(snapshot, line)
+	end
+	TSMDBG.Dump("/tsmmail", snapshot)
+	print("Snapshot saved. Use ReloadUI to flush to TSMDebugDB.")
+end
+
+-- /tsmahcat — дамп категорий AH (проверка порядка GetAuctionItemClasses на этом клиенте)
+SLASH_TSMAHCAT1 = "/tsmahcat"
+SlashCmdList["TSMAHCAT"] = function()
+	if not GetAuctionItemClasses then
+		print("|cffff8800TSMDBG:|r GetAuctionItemClasses not available")
+		return
+	end
+	print("|cff00ff00TSMDBG:|r GetAuctionItemClasses() order:")
+	local classes = { GetAuctionItemClasses() }
+	for i, name in ipairs(classes) do
+		print(("  %d = %s"):format(i, tostring(name)))
+	end
+	TSMDBG.Dump("/tsmahcat", classes)
+end
+
+TSMDBG.Log("CMD", "Slash commands registered: /tsmenv /tsmscan /tsmrows /tsmstate /tsmmail /tsmahcat")
