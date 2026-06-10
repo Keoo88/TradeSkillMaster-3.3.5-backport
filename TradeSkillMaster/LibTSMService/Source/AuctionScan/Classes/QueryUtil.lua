@@ -91,7 +91,17 @@ function QueryUtil.GenerateThreaded(itemList, callback)
 		TempTable.Release(currentItems)
 	else
 		for _, itemString in ipairs(itemList) do
-			private.GenerateQuery(callback, itemString, private.GetItemQueryInfo(itemString))
+			-- 3.3.5: NAME-only exact query (same reasoning as the find-on-demand
+			-- fallback in ScanManager). The classic QueryAuctionItems class/subclass
+			-- args are AH category indices rather than the modern item class ids
+			-- which ItemInfo stores, and the quality/level args are exact-match
+			-- filters on common 3.3.5 server cores, so a fully-filtered query
+			-- frequently returns 0 auctions. An exact name query + SetItems
+			-- post-filtering in the Scanner finds the items reliably.
+			local query = Query.Get()
+				:SetStr(ItemInfo.GetName(itemString), true)
+				:SetItems(itemString)
+			callback(query)
 		end
 	end
 end
