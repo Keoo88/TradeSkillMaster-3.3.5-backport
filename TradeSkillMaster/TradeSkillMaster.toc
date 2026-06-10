@@ -1,4 +1,4 @@
-## Interface: 30300, 120001, 50503, 20505, 11508
+## Interface: 30300
 ## Title: |cff00fe00TradeSkillMaster|r
 ## IconTexture: Interface\Addons\TradeSkillMaster\Media\Logo
 ## Category-enUS: Auctions
