@@ -79,9 +79,10 @@ local GENERIC_EVENTS = {
 }
 local GENERIC_EVENT_SEP = "/"
 -- Modern Enum.ItemClass.* -> 3.3.5 AH positional 1-based classIndex.
--- WotLK GetAuctionItemClasses() order is fixed:
---   1=Weapon 2=Armor 3=Container 4=Consumable 5=TradeGoods 6=Projectile
---   7=Quiver 8=Recipe 9=Gem 10=Misc 11=Glyph
+-- WotLK GetAuctionItemClasses() order is fixed (Glyph was inserted at position 5,
+-- right after Consumable, in 3.0; Quest Items is the last category):
+--   1=Weapon 2=Armor 3=Container 4=Consumable 5=Glyph 6=TradeGoods
+--   7=Projectile 8=Quiver 9=Recipe 10=Gem 11=Misc 12=Quest
 -- ClassicAPI shims Enum.ItemClass to modern codes but doesn't translate at the
 -- QueryAuctionItems call site, so we do it here.
 local MODERN_TO_AH_CLASSIC_INDEX = {
@@ -89,13 +90,14 @@ local MODERN_TO_AH_CLASSIC_INDEX = {
 	[4]  = 2,  -- Armor
 	[1]  = 3,  -- Container
 	[0]  = 4,  -- Consumable
-	[7]  = 5,  -- Trade Goods
-	[6]  = 6,  -- Projectile
-	[11] = 7,  -- Quiver
-	[9]  = 8,  -- Recipe
-	[3]  = 9,  -- Gem
-	[15] = 10, -- Miscellaneous
-	[16] = 11, -- Glyph
+	[16] = 5,  -- Glyph
+	[7]  = 6,  -- Trade Goods
+	[6]  = 7,  -- Projectile
+	[11] = 8,  -- Quiver
+	[9]  = 9,  -- Recipe
+	[3]  = 10, -- Gem
+	[15] = 11, -- Miscellaneous
+	[12] = 12, -- Quest
 }
 local API_EVENT_INFO = not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) and
 	{ -- Classic
