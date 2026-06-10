@@ -10,6 +10,7 @@ local Math = LibTSMUI:From("LibTSMUtil"):Include("Lua.Math")
 local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local TextureAtlas = LibTSMUI:From("LibTSMService"):Include("UI.TextureAtlas")
 local ScriptWrapper = LibTSMUI:From("LibTSMWoW"):Include("API.ScriptWrapper")
+local ClientInfo = LibTSMUI:From("LibTSMWoW"):Include("Util.ClientInfo")
 local private = {
 	debugObject = {},
 	cancellables = {},
@@ -553,7 +554,18 @@ end
 ---@param name? string The global name
 ---@return TextureExtended
 function WidgetExtensions.CreateTexture(parent, layer, subLayer, name)
-	return private.WithExtension(parent:CreateTexture(name, layer or "ARTWORK", nil, subLayer), TextureExtended)
+	layer = layer or "ARTWORK"
+	-- On 3.3.5a the texture drawSubLevel argument (4th param of CreateTexture, added in
+	-- Cataclysm 4.0) is not honored, so textures which rely on a negative sublevel to draw
+	-- below others in the same layer (e.g. ListRow hover/selected highlights at ARTWORK -1
+	-- vs the row action icons at ARTWORK 0) render in undefined order and can cover them --
+	-- the icons become invisible while still being clickable. Map negative ARTWORK sublevels
+	-- onto real lower draw layers, which the client always respects. Passing subLayer too is
+	-- harmless on clients that do support it.
+	if not ClientInfo.IsRetail() and layer == "ARTWORK" and subLayer and subLayer < 0 then
+		layer = subLayer <= -2 and "BACKGROUND" or "BORDER"
+	end
+	return private.WithExtension(parent:CreateTexture(name, layer, nil, subLayer), TextureExtended)
 end
 
 ---Creates an animation group with extensions.
