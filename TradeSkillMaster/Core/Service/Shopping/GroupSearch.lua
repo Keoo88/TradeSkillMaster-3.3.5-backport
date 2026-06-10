@@ -57,9 +57,11 @@ function private.ScanThread(auctionScan, groupList)
 	wipe(private.itemList)
 	wipe(private.maxQuantity)
 	wipe(private.queries)
+	local numTotalItems = 0
 	for _, groupPath in ipairs(groupList) do
 		private.groups[groupPath] = true
 		for _, itemString in Group.ItemIterator(groupPath) do
+			numTotalItems = numTotalItems + 1
 			local isValid, maxQuantity = private.GetRestockQuantity(itemString)
 			if isValid then
 				private.maxQuantity[itemString] = maxQuantity
@@ -69,6 +71,12 @@ function private.ScanThread(auctionScan, groupList)
 		Threading.Yield()
 	end
 	if #private.itemList == 0 then
+		-- Don't fail silently - tell the user why the group search has nothing to do
+		if numTotalItems == 0 then
+			ChatMessage.PrintUser(L["The selected groups don't contain any items."])
+		else
+			ChatMessage.PrintfUser(L["Skipped all %d items in the selected groups. Items must have a Shopping operation applied (with a valid max price) and be below their restock quantity to be included in a group search."], numTotalItems)
+		end
 		return false
 	end
 
