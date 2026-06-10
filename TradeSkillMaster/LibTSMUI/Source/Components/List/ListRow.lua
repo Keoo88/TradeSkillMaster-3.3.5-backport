@@ -463,7 +463,7 @@ end
 ---Shows a tooltip with the full contents of a text element after a delay if it doesn't fit.
 ---@param text FontStringExtended The text element
 function ListRow:ShowDelayedLongTextTooltip(text)
-	if text:GetWidth() + 0.5 < text:GetUnboundedStringWidth() then
+	if text:GetWidth() + 0.5 < text:TSMGetUnboundedStringWidth() then
 		private.tooltipTimer:Cancel()
 		private.tooltipRow = self
 		private.tooltipValue = text:GetText()

@@ -289,6 +289,17 @@ function FontStringExtended:TSMSubscribeTextColor(color)
 	)
 end
 
+---Gets the width of the string ignoring the region's width constraint.
+---@return number
+function FontStringExtended:TSMGetUnboundedStringWidth()
+	if self.GetUnboundedStringWidth then
+		return self:GetUnboundedStringWidth()
+	end
+	-- 3.3.5: FontString has no GetUnboundedStringWidth; GetStringWidth returns the
+	-- unwrapped width of the full string, which is the closest equivalent
+	return self:GetStringWidth()
+end
+
 ---Sets the font.
 ---@param font string|FontObjectValue The font key or object
 function FontStringExtended:TSMSetFont(font)

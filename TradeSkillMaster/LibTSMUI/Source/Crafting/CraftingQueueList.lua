@@ -313,7 +313,7 @@ function CraftingQueueList.__protected:_HandleRowDraw(row)
 		local onCooldown = Profession.GetRemainingCooldown(craftString)
 		qtyText:TSMSetTextColor(((numCraftable == 0 or onCooldown) and "FEEDBACK_RED") or (numCraftable < numQueued and "FEEDBACK_YELLOW") or "FEEDBACK_GREEN")
 		qtyText:SetText(format("%s / %s", numCraftable, numQueued))
-		qtyText:SetWidth(qtyText:GetUnboundedStringWidth())
+		qtyText:SetWidth(qtyText:TSMGetUnboundedStringWidth())
 	end
 
 	-- Name / icon texture

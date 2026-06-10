@@ -1105,7 +1105,7 @@ function AuctionScrollTable.__protected:_HandleRowDraw(row)
 		badge:Show()
 		badge:SetText(numSubRows > 999 and "(999+)" or "("..numSubRows..")")
 		badge:SetPoint("LEFT", text, "RIGHT", ICON_SPACING, 0)
-		local width = badge:GetUnboundedStringWidth()
+		local width = badge:TSMGetUnboundedStringWidth()
 		badge:SetWidth(width)
 		itemWidthReduction = itemWidthReduction + width + ICON_SPACING
 		for _, colSettings in ipairs(self:_GetSettingsValue().cols) do
