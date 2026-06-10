@@ -101,7 +101,7 @@ end
 function EditableText:Release()
 	local frame = self:_GetBaseFrame()
 	frame:ClearFocus()
-	frame:Disable()
+	frame:TSMSetEnabled(false)
 	ItemLinked.UnregisterCallback(self:__closure("_HandleItemLinked"))
 	self._itemInsertMode = ITEM_INSERT_MODE.DISABLED
 	self._onValueChangedHandler = nil
