@@ -360,8 +360,25 @@ end
 function private.GetPlayerCastingInfo()
 	if ClientInfo.IsRetail() then
 		return UnitCastingInfo("player")
-	else
+	elseif CastingInfo then
 		return CastingInfo()
+	else
+		-- 3.3.5: CastingInfo() doesn't exist and UnitCastingInfo() uses the old
+		-- signature (rank as the 2nd return, no spellId at the end), so emulate
+		-- the modern return values which CraftTimeoutMonitor expects
+		local name, _, text, texture, startTimeMs, endTimeMs, isTradeSkill, castId, notInterruptible = UnitCastingInfo("player")
+		if not name then
+			return nil
+		end
+		local spellId = nil
+		if private.craftSpellId and GetSpellInfo(private.craftSpellId) == name then
+			spellId = private.craftSpellId
+		else
+			-- some other spell is being cast; return a sentinel so the caller
+			-- can tell it apart from "not casting at all"
+			spellId = -1
+		end
+		return name, text, texture, startTimeMs, endTimeMs, isTradeSkill, castId, notInterruptible, spellId
 	end
 end
 
