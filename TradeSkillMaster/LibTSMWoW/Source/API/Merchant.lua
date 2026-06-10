@@ -17,6 +17,11 @@ local ClientInfo = LibTSMWoW:Include("Util.ClientInfo")
 ---Gets all currencies (by ID) used by the merchant.
 ---@return number ...
 function Merchant.GetCurrencies()
+	if not GetMerchantCurrencies then
+		-- 3.3.5: GetMerchantCurrencies() doesn't exist (added in 4.0); extended
+		-- costs are handled via GetMerchantItemCostInfo() instead
+		return nil
+	end
 	return GetMerchantCurrencies()
 end
 
