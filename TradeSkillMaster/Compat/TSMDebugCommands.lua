@@ -166,11 +166,10 @@ SlashCmdList["TSMSTATE"] = function()
 	print("Snapshot saved. Use ReloadUI to flush to TSMDebugDB.")
 end
 
--- /tsmmail — дамп классификации писем в открытом ящике (диагностика Ledger/Accounting)
--- Открыть почтовый ящик и выполнить. Показывает, видит ли клиент invoice-данные
--- аукционных писем (без них покупки/продажи не попадают в Ledger).
-SLASH_TSMMAIL1 = "/tsmmail"
-SlashCmdList["TSMMAIL"] = function()
+-- Дамп классификации писем в открытом ящике (диагностика Ledger/Accounting).
+-- Показывает, видит ли клиент invoice-данные аукционных писем
+-- (без них покупки/продажи не попадают в Ledger).
+local function DumpInbox()
 	if not GetInboxNumItems then
 		print("|cffff8800TSMDBG:|r mail API not available")
 		return
@@ -188,12 +187,10 @@ SlashCmdList["TSMMAIL"] = function()
 		tinsert(snapshot, line)
 	end
 	TSMDBG.Dump("/tsmmail", snapshot)
-	print("Snapshot saved. Use ReloadUI to flush to TSMDebugDB.")
 end
 
--- /tsmahcat — дамп категорий AH (проверка порядка GetAuctionItemClasses на этом клиенте)
-SLASH_TSMAHCAT1 = "/tsmahcat"
-SlashCmdList["TSMAHCAT"] = function()
+-- Дамп категорий AH (проверка порядка GetAuctionItemClasses на этом клиенте)
+local function DumpAHCategories()
 	if not GetAuctionItemClasses then
 		print("|cffff8800TSMDBG:|r GetAuctionItemClasses not available")
 		return
@@ -205,5 +202,41 @@ SlashCmdList["TSMAHCAT"] = function()
 	end
 	TSMDBG.Dump("/tsmahcat", classes)
 end
+
+SLASH_TSMMAIL1 = "/tsmmail"
+SlashCmdList["TSMMAIL"] = DumpInbox
+
+SLASH_TSMAHCAT1 = "/tsmahcat"
+SlashCmdList["TSMAHCAT"] = DumpAHCategories
+
+-- Авто-дамп без команд: ящик почты → инвойсы, аукционный дом → категории.
+-- Срабатывает один раз на каждое открытие ящика и один раз за сессию для AH.
+local autoFrame = CreateFrame("Frame")
+local mailDumped = false
+local ahDumped = false
+autoFrame:RegisterEvent("MAIL_INBOX_UPDATE")
+autoFrame:RegisterEvent("MAIL_CLOSED")
+autoFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
+autoFrame:SetScript("OnEvent", function(self, event)
+	if event == "MAIL_CLOSED" then
+		mailDumped = false
+	elseif event == "MAIL_INBOX_UPDATE" then
+		if not mailDumped and GetInboxNumItems and GetInboxNumItems() > 0 then
+			mailDumped = true
+			local ok, err = pcall(DumpInbox)
+			if not ok then
+				TSMDBG.LogErr("auto-mail-dump", err)
+			end
+		end
+	elseif event == "AUCTION_HOUSE_SHOW" then
+		if not ahDumped then
+			ahDumped = true
+			local ok, err = pcall(DumpAHCategories)
+			if not ok then
+				TSMDBG.LogErr("auto-ah-dump", err)
+			end
+		end
+	end
+end)
 
 TSMDBG.Log("CMD", "Slash commands registered: /tsmenv /tsmscan /tsmrows /tsmstate /tsmmail /tsmahcat")
