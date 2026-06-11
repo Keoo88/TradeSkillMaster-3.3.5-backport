@@ -22,6 +22,7 @@ local private = {
 	characterGuilds = {},
 	tempTimeTable = {},
 	selectedTimeRange = nil,
+	graphYStepSize = nil,
 }
 local SECONDS_PER_DAY = 60 * 60 * 24
 local MIN_GRAPH_STEP_SIZE = ClientInfo.IsRetail() and (COPPER_PER_GOLD * 1000) or COPPER_PER_GOLD
@@ -694,24 +695,38 @@ end
 function private.GraphYStepFunc(mode, ...)
 	if mode == "RANGE" then
 		local yMin, yMax, maxNumSteps = ...
-		-- find the smallest 10^X step size which still looks good
-		local minStep = max((yMax - yMin) / maxNumSteps / 10, yMax / 200)
+		-- 3.3.5: pick a "nice" 1/2/5 x 10^n step large enough that ~maxNumSteps gridlines fit so
+		-- the Y-axis labels land on round numbers. The old 10^X-only heuristic was tuned for the
+		-- retail million-gold scale and collapsed to a 1g step on WotLK (ugly 100/157/214...).
+		local minStep = max((yMax - yMin) / max(maxNumSteps, 1), MIN_GRAPH_STEP_SIZE)
 		local stepSize = MIN_GRAPH_STEP_SIZE
 		while stepSize < minStep do
-			stepSize = stepSize * 10
+			if stepSize * 2 >= minStep then
+				stepSize = stepSize * 2
+				break
+			elseif stepSize * 5 >= minStep then
+				stepSize = stepSize * 5
+				break
+			else
+				stepSize = stepSize * 10
+			end
 		end
+		private.graphYStepSize = stepSize
 		yMin = Math.Floor(yMin, stepSize)
-		yMax = Math.Ceil(yMax + stepSize / 3, stepSize)
+		local dataYMax = yMax
+		yMax = Math.Ceil(yMax, stepSize)
+		if yMax <= dataYMax then
+			yMax = yMax + stepSize
+		end
 		if yMin == yMax then
 			yMax = yMax + stepSize
 		end
 		return yMin, yMax
 	elseif mode == "NEXT" then
-		local prevValue, yMax = ...
-		local stepSize = MIN_GRAPH_STEP_SIZE
-		while stepSize < yMax / 1000 do
-			stepSize = stepSize * 10
-		end
+		local prevValue = ...
+		-- 3.3.5: reuse the "nice" step chosen during the RANGE pass so gridlines stay on round
+		-- numbers; the old yMax/1000 heuristic kept a 1g step on the WotLK gold scale.
+		local stepSize = private.graphYStepSize or MIN_GRAPH_STEP_SIZE
 		return Math.Floor(prevValue, stepSize) + stepSize
 	else
 		error("Invalid mode")
