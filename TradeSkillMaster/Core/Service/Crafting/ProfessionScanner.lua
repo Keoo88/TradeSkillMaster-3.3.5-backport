@@ -39,16 +39,14 @@ end
 function private.ScanHook(professionName, craftStrings)
 	if not private.settings.playerProfessions[professionName] then
 		-- we are in combat or the player's professions haven't been scanned yet by PlayerProfessions.lua, so will try again in a bit
-		-- Auto-print debug (once per profession per session) since this silently blocks the
-		-- profession from ever being imported if the name never appears in playerProfessions
-		private.dbgPrinted = private.dbgPrinted or {}
-		if not private.dbgPrinted[professionName] then
-			private.dbgPrinted[professionName] = true
+		-- Log silently (to the TSMDebugDB SavedVariable) since this blocks the profession
+		-- from ever being imported if the name never appears in playerProfessions
+		if _G.TSMDBG then
 			local keys = {}
 			for name in pairs(private.settings.playerProfessions) do
 				tinsert(keys, tostring(name))
 			end
-			print(format("|cff33ff99TSMDBG|r import blocked: '%s' not found in player professions [%s] - will keep retrying", tostring(professionName), table.concat(keys, ", ")))
+			_G.TSMDBG.Log("ProfScan", "import blocked: '%s' not in player professions [%s]", tostring(professionName), table.concat(keys, ", "))
 		end
 		return false, true
 	end
@@ -67,11 +65,8 @@ function private.ScanHook(professionName, craftStrings)
 	TSM.Crafting.SetSpellDBQueryUpdatesPaused(false)
 
 	Log.Info("Scanned %s (failed to scan %d)", professionName, numFailed)
-	-- Auto-print debug (once per profession per session) confirming the import went through
-	private.dbgPrinted = private.dbgPrinted or {}
-	if not private.dbgPrinted["imported:"..professionName] then
-		private.dbgPrinted["imported:"..professionName] = true
-		print(format("|cff33ff99TSMDBG|r imported '%s': %d recipes (%d failed)", tostring(professionName), #craftStrings, numFailed))
+	if _G.TSMDBG then
+		_G.TSMDBG.Log("ProfScan", "imported '%s': %d recipes (%d failed)", tostring(professionName), #craftStrings, numFailed)
 	end
 	return numFailed == 0, false
 end

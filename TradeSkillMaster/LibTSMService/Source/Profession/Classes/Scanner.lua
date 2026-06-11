@@ -42,7 +42,6 @@ local private = {
 	matStringItemsTemp = {},
 	matQuantitiesTemp = {},
 	matIteratorQuery = nil,
-	scanIssuePrinted = {},
 }
 -- Don't want to scan a bunch of times when the profession first loads so add a 10 frame debounce to update events
 local SCAN_DEBOUNCE_FRAMES = 10
@@ -496,12 +495,11 @@ function private.QueueProfessionScan()
 	private.scanTimer:RunForFrames(SCAN_DEBOUNCE_FRAMES)
 end
 
--- Throttled debug chat print (max 10 per session) to trace why a profession scan
--- bails out silently - helps diagnose professions not loading without slash commands
+-- Silent debug trace (to the TSMDebugDB SavedVariable, not chat) of why a profession
+-- scan bails out - helps diagnose professions not loading without spamming chat
 function private.DbgChatTrace(fmtStr, ...)
-	private.scanTracePrints = (private.scanTracePrints or 0) + 1
-	if private.scanTracePrints <= 10 then
-		print("|cff33ff99TSMDBG|r "..format(fmtStr, ...))
+	if _G.TSMDBG then
+		_G.TSMDBG.Log("EnchScan", fmtStr, ...)
 	end
 end
 
@@ -710,16 +708,9 @@ function private.ScanProfession()
 				end
 			end
 		end
-		-- Auto-print a one-line summary to chat (once per profession per session) so issues
-		-- like a profession not loading can be diagnosed without any slash commands
-		local printKey = tostring(professionName)
-		if not private.scanIssuePrinted[printKey] then
-			private.scanIssuePrinted[printKey] = true
-			local profType = TradeSkill.GetType()
-			print(format("|cff33ff99TSMDBG|r scan '%s': recipes=%d invalid=%d type=%s%s%s%s", printKey, dbgCount, dbgInvalid, tostring(profType),
-				dbgFirstInvalid and (" | first invalid: "..dbgFirstInvalid) or "",
-				dbgInvalid > 0 and " | (will keep rescanning until valid)" or "",
-				profType ~= TradeSkill.TYPE.PLAYER and " | NOT imported (non-player profession!)" or ""))
+		-- Log a one-line summary (silently, to the TSMDebugDB SavedVariable)
+		if _G.TSMDBG and dbgFirstInvalid then
+			_G.TSMDBG.Log("EnchScan", "scan '%s': first invalid: %s", tostring(professionName), dbgFirstInvalid)
 		end
 		if _G.TSMDBG then
 			_G.TSMDBG.Log("EnchScan", "classic scan loop done iterated=%d invalid=%d", dbgCount, dbgInvalid)
