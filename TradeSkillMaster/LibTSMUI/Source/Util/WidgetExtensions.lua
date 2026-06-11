@@ -242,11 +242,17 @@ end
 ---@param minAlpha number The min color alpha
 ---@param maxAlpha number The max color alpha
 function TextureExtended:TSMSetVerticalGradient(color, minAlpha, maxAlpha)
-	local minR, minG, minB = color:GetFractionalRGBA()
-	private.colorTemp1:SetRGBA(minR, minG, minB, minAlpha)
-	local maxR, maxG, maxB = color:GetFractionalRGBA()
-	private.colorTemp2:SetRGBA(maxR, maxG, maxB, maxAlpha)
-	self:SetGradient("VERTICAL", private.colorTemp1, private.colorTemp2)
+	local r, g, b = color:GetFractionalRGBA()
+	if not ClientInfo.IsRetail() and self.SetGradientAlpha then
+		-- 3.3.5a: Texture:SetGradient takes numeric r,g,b (no alpha) on this client, so passing
+		-- Color objects produced an opaque black fill that covered the gridlines under the graph
+		-- line. The legacy SetGradientAlpha(orientation, r,g,b,a, r,g,b,a) supports per-stop alpha.
+		self:SetGradientAlpha("VERTICAL", r, g, b, minAlpha, r, g, b, maxAlpha)
+	else
+		private.colorTemp1:SetRGBA(r, g, b, minAlpha)
+		private.colorTemp2:SetRGBA(r, g, b, maxAlpha)
+		self:SetGradient("VERTICAL", private.colorTemp1, private.colorTemp2)
+	end
 end
 
 ---Sets the size based on a texture atlas key or width / height.
