@@ -139,7 +139,6 @@ function PostScan.DoProcess()
 	if bag then
 		local bagQuantity = Container.GetStackCount(bag, slot)
 		Log.Info("Posting %s x %d from %d,%d (%d)", itemString, stackSize, bag, slot, bagQuantity or -1)
-		ChatMessage.PrintfUser("DEBUG: Posting %s x%d", tostring(itemString), stackSize)
 		if ClientInfo.HasFeature(ClientInfo.FEATURES.AH_STACKS) then
 			result = AuctionHouseWrapper.PostAuction(bag, slot, postTime, stackSize, 1, bid, buyout)
 		else
@@ -381,9 +380,6 @@ function private.UpdateBagDB()
 			if Container.GetItemLink(bag, slot) then apiFilled = apiFilled + 1 end
 		end
 	end
-	ChatMessage.PrintfUser("DEBUG: slots all=%d bagsRange=%d notBound=%d auctionable=%d", nAll, nBags, nNotBound, count)
-	ChatMessage.PrintfUser("DEBUG: API numBags=%d apiSlots=%d apiFilled=%d", Container.GetNumBags(), apiSlots, apiFilled)
-	ChatMessage.PrintfUser("DEBUG: UpdateBagDB found %d items in bags", count)
 end
 
 function private.CanPostItem(itemString, groupPath, numHave)
