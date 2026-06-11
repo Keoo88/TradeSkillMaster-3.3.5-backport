@@ -93,6 +93,9 @@ local RESULT = EnumType.NewNested("AUCTIONING_OPERATION_RESULT", {
 AuctioningOperation.RESULT = RESULT
 local OPERATION_TYPE = "Auctioning"
 local COPPER_PER_SILVER = 100
+local POST_CAP_DEFAULT = "5"
+-- The catch-all operation name; mirrors LibTSMTypes Operation's DEFAULT_OPERATION_NAME (kept local since it isn't exported)
+local DEFAULT_OPERATION_NAME = "#Default"
 local VALID_PRICE_KEYS = {
 	minPrice = true,
 	normalPrice = true,
@@ -199,7 +202,7 @@ function AuctioningOperation.Load(localizedName, defaultZeroUndercut, includeBla
 	local operationType = Operation.NewType(OPERATION_TYPE, localizedName, 20)
 		:SetCustomSanitizeFunc(private.SanitizeSettings)
 		:AddNumberSetting("ignoreLowDuration")
-		:AddCustomStringSetting("postCap", "5")
+		:AddCustomStringSetting("postCap", POST_CAP_DEFAULT)
 		:AddCustomStringSetting("keepQuantity", "0")
 		:AddCustomStringSetting("maxExpires", "0")
 		:AddNumberSetting("duration", 1, private.SanitizeDuration)
@@ -218,8 +221,8 @@ function AuctioningOperation.Load(localizedName, defaultZeroUndercut, includeBla
 	end
 	if maxStackSizeFunc then
 		operationType:AddBooleanSetting("matchStackSize")
-		operationType:AddCustomStringSetting("stackSize", "1")
-		operationType:AddBooleanSetting("stackSizeIsCap")
+		operationType:AddCustomStringSetting("stackSize", "maxstack")
+		operationType:AddBooleanSetting("stackSizeIsCap", true)
 	end
 	Operation.RegisterType(operationType)
 end
@@ -681,9 +684,17 @@ end
 -- Private Helper Functions
 -- ============================================================================
 
-function private.SanitizeSettings(operation)
+function private.SanitizeSettings(operation, operationName)
 	if not private.includeStackSize and operation.stackSize and tonumber(operation.postCap) and tonumber(operation.stackSize) then
 		operation.postCap = tonumber(operation.postCap) * tonumber(operation.stackSize)
+	end
+	-- A postCap of 0 silently disables ALL posting for the operation. Imported operation strings
+	-- (often authored on other game versions) can carry postCap=0, and since 0 is within the valid
+	-- range the generic sanitizer keeps it - leaving the user with "Posting disabled." on every item.
+	-- For the catch-all #Default operation, restore the normal default so a stray 0 from an import (or
+	-- a prior load) doesn't quietly break posting for everything that isn't explicitly configured.
+	if operationName == DEFAULT_OPERATION_NAME and tonumber(operation.postCap) == 0 then
+		operation.postCap = POST_CAP_DEFAULT
 	end
 	if private.defaultZeroUndercut and (type(operation.undercut) == "number" and operation.undercut or Money.FromString(operation.undercut) or math.huge) < COPPER_PER_SILVER then
 		operation.undercut = "0c"
