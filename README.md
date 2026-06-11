@@ -121,10 +121,18 @@ based on your groups, and empty your mailbox with a single click.
 - Should work on any WotLK 3.3.5a private server (developed on Warmane).
 
 <a name="credits"></a>
+### Author
+
+<p align="left">
+  <b>Egor (Keoo88)</b><br>
+  WoW 3.3.5a addon backporter. Maintaining TSM, KiwiFarm, Postal and more for the WotLK client.<br><br>
+  <img src="https://img.shields.io/badge/Discord-keoo88-5865F2?style=flat-square&logo=discord&logoColor=white">
+  <a href="https://github.com/Keoo88"><img src="https://img.shields.io/badge/GitHub-Keoo88-181717?style=flat-square&logo=github"></a>
+</p>
+
 ### Credits
 
 - Original addon: **TradeSkillMaster Team**
-- WotLK 3.3.5a backport: **Keoo**
 - Required polyfill: **!!!ClassicAPI**
 
 ---
@@ -224,8 +232,16 @@ based on your groups, and empty your mailbox with a single click.
 - Должно работать на любом WotLK 3.3.5a приватном сервере (разработка велась на Warmane).
 
 <a name="благодарности"></a>
+### Автор
+
+<p align="left">
+  <b>Egor (Keoo88)</b><br>
+  Бэкпортёр аддонов под WoW 3.3.5a. Поддерживаю TSM, KiwiFarm, Postal и другие проекты для WotLK.<br><br>
+  <img src="https://img.shields.io/badge/Discord-keoo88-5865F2?style=flat-square&logo=discord&logoColor=white">
+  <a href="https://github.com/Keoo88"><img src="https://img.shields.io/badge/GitHub-Keoo88-181717?style=flat-square&logo=github"></a>
+</p>
+
 ### Благодарности
 
 - Оригинальный аддон: **Команда TradeSkillMaster**
-- Бэкпорт под WotLK 3.3.5a: **Keoo**
 - Обязательный полифилл: **!!!ClassicAPI**
