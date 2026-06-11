@@ -362,7 +362,9 @@ function private.CheckSendMail(destination, currentSubject, ...)
 
 	if codAmount ~= 0 then
 		for i = 1, 12 do
-			local itemName, _, _, count = GetSendMailItem(i)
+			-- Retail: name, itemID, texture, count; 3.3.5: name, texture, count (no itemID return)
+			local itemName = GetSendMailItem(i)
+			local count = select(ClientInfo.IsRetail() and 4 or 3, GetSendMailItem(i))
 			if itemName and count then
 				if not subject then
 					subject = itemName

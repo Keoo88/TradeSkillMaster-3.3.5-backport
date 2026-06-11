@@ -188,7 +188,10 @@ end
 ---@return number quantity
 ---@return string name
 function Inbox.GetAttachment(index, attachIndex)
-	local name, _, _, stackSize = GetInboxItem(index, attachIndex)
+	-- Retail: name, itemID, texture, count, quality, canUse
+	-- 3.3.5: name, texture, count, quality, canUse (no itemID return)
+	local name = GetInboxItem(index, attachIndex)
+	local stackSize = select(ClientInfo.IsRetail() and 4 or 3, GetInboxItem(index, attachIndex))
 	local itemLink = GetInboxItemLink(index, attachIndex)
 	return itemLink, stackSize, name
 end
@@ -205,7 +208,9 @@ end
 ---@return number quantity
 function Inbox.GetSendAttachment(index)
 	local itemLink = GetSendMailItemLink(index)
-	local _, _, _, quantity = GetSendMailItem(index)
+	-- Retail: name, itemID, texture, count, quality
+	-- 3.3.5: name, texture, count, quality (no itemID return)
+	local quantity = select(ClientInfo.IsRetail() and 4 or 3, GetSendMailItem(index))
 	return itemLink, quantity
 end
 
