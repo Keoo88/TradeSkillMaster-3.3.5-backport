@@ -741,6 +741,16 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		manager:ManageFuture("pendingFuture", future, "ACTION_BUYOUT_FUTURE_DONE")
 	elseif action == "ACTION_BUYOUT_FUTURE_DONE" then
 		local result = ...
+		if not state.selectedAuction then
+			-- The selection got cleared while the buy was in flight (e.g. a page
+			-- reflow / row removal / leaving the tab), so drop this stale completion
+			-- instead of erroring mid-handler, and reset the buy counters so
+			-- isConfirming can't get stuck true (which would disable row selection)
+			state.numBid = 0
+			state.numBought = 0
+			state.numConfirmed = 0
+			return
+		end
 		if result then
 			Mail.HandleAuctionPurchase(ItemString.ToLevel(state.selectedAuction:GetItemString()), state.lastBuyQuantity)
 			state.numConfirmed = min(state.numConfirmed + ((not LibTSMUI.IsVanillaClassic() and not LibTSMUI.IsBCClassic() and not LibTSMUI.IsWrathClassic()) and state.lastBuyQuantity or 1), state.numFound)
@@ -756,7 +766,12 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			if state.lastBuyQuantity > 0 then
 				state.numBought = state.numBought - ((not LibTSMUI.IsVanillaClassic() and not LibTSMUI.IsBCClassic() and not LibTSMUI.IsWrathClassic()) and state.lastBuyQuantity or 1)
 				if LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic() then
-					tinsert(state.findResult, state.lastBuyIndex)
+					-- findResult can be nil if the selection got cleared while the buy
+					-- future was pending (e.g. the search ended); don't crash on the
+					-- failure path in that case
+					if state.findResult and state.lastBuyIndex then
+						tinsert(state.findResult, state.lastBuyIndex)
+					end
 				end
 				state.lastBuyQuantity = 0
 				state.lastBuyIndex = nil
@@ -828,6 +843,13 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		manager:ManageFuture("pendingFuture", future, "ACTION_BID_FUTURE_DONE")
 	elseif action == "ACTION_BID_FUTURE_DONE" then
 		local result = ...
+		if not state.selectedAuction then
+			-- See ACTION_BUYOUT_FUTURE_DONE: drop stale completions safely
+			state.numBid = 0
+			state.numBought = 0
+			state.numConfirmed = 0
+			return
+		end
 		if result then
 			state.numConfirmed = state.numConfirmed + 1
 			if state.numConfirmed == state.numFound then
