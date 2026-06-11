@@ -39,8 +39,9 @@
 local TSMDBG = {}
 _G.TSMDBG = TSMDBG
 
-local LOG_MAX = 5000
-local ERR_MAX = 500
+local LOG_MAX = 3000
+local ERR_MAX = 200
+local LOG_PREV_MAX = 1500
 local SNAPSHOT_MAX = 50
 local LEVEL_INFO, LEVEL_WARN, LEVEL_ERR = "INFO", "WARN", "ERR"
 
@@ -97,7 +98,7 @@ function TSMDBG.LogErr(context, err)
 		time = ts(),
 		ctx = tostring(context),
 		err = tostring(err),
-		trace = debugstack and debugstack(2, 25, 25) or "",
+		trace = debugstack and debugstack(2, 15, 10) or "",
 	}
 	pushErr(entry)
 	pushLog(LEVEL_ERR, "ERR", tostring(context) .. " | " .. tostring(err))
@@ -209,8 +210,19 @@ f:SetScript("OnEvent", function(self, event, addon)
 	if event == "ADDON_LOADED" and addon == "TradeSkillMaster" then
 		if not _G.TSMDebugDB then _G.TSMDebugDB = {} end
 		DB = _G.TSMDebugDB
-		-- Rotate
+		-- Rotate (keep only the tail of the previous session's logs to save memory)
 		DB.logsPrev = DB.logs or {}
+		local prev = DB.logsPrev
+		local numPrev = #prev
+		local excess = numPrev - LOG_PREV_MAX
+		if excess > 0 then
+			for i = 1, LOG_PREV_MAX do
+				prev[i] = prev[i + excess]
+			end
+			for i = LOG_PREV_MAX + 1, numPrev do
+				prev[i] = nil
+			end
+		end
 		DB.logs = {}
 		DB.errors = {}
 		DB.snapshots = DB.snapshots or {}
