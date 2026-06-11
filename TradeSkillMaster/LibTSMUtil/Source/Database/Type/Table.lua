@@ -59,6 +59,10 @@ function DatabaseTable.__private:__init(schema)
 	self._uniques = {}
 	self._trigramIndexField = nil
 	self._trigramIndexLists = {}
+	-- The trigram index is built lazily on the first MATCHES query (instead of
+	-- eagerly on every insert) since it's expensive in both memory and login time
+	-- and many sessions never use a name search.
+	self._trigramIndexBuilt = false
 	self._indexOrUniqueFields = {}
 	self._queryUpdatesPaused = 0
 	self._queuedQueryUpdate = false
@@ -173,7 +177,7 @@ function DatabaseTable:DeleteRowByUUID(uuid)
 	for indexField in pairs(self._indexLists) do
 		self:_IndexListRemove(indexField, uuid)
 	end
-	if self._trigramIndexField then
+	if self._trigramIndexField and self._trigramIndexBuilt then
 		self:_TrigramIndexRemove(uuid)
 	end
 	for field, uniqueValues in pairs(self._uniques) do
@@ -239,6 +243,7 @@ function DatabaseTable:Truncate()
 		wipe(indexList)
 	end
 	wipe(self._trigramIndexLists)
+	self._trigramIndexBuilt = false
 	for _, uniqueValues in pairs(self._uniques) do
 		wipe(uniqueValues)
 	end
@@ -347,7 +352,7 @@ function DatabaseTable:SetUniqueRowField(uniqueField, uniqueValue, field, value)
 		-- remove the old value from the index first
 		self:_IndexListRemove(field, uuid)
 	end
-	if self._trigramIndexField == field and #prevValue > 3 then
+	if self._trigramIndexField == field and self._trigramIndexBuilt and #prevValue > 3 then
 		self:_TrigramIndexRemove(uuid)
 	end
 	self._data[dataOffset + fieldOffset - 1] = value
@@ -355,7 +360,7 @@ function DatabaseTable:SetUniqueRowField(uniqueField, uniqueValue, field, value)
 		-- insert the new value into the index
 		self:_IndexListInsert(field, uuid)
 	end
-	if self._trigramIndexField == field then
+	if self._trigramIndexField == field and self._trigramIndexBuilt then
 		self:_TrigramIndexInsert(uuid)
 	end
 	self:_UpdateQueries()
@@ -754,42 +759,14 @@ function DatabaseTable:BulkInsertEnd()
 				TempTable.Release(indexValues)
 			end
 		end
-		if self._trigramIndexField then
+		if self._trigramIndexField and self._trigramIndexBuilt then
 			if newRowRatio < 0.01 then
 				-- we inserted less than 1% of the rows, so just insert the new index values 1 by 1
 				for i = self._bulkInsertContext.firstUUIDIndex, #self._uuids do
 					self:_TrigramIndexInsert(self._uuids[i])
 				end
 			else
-				local trigramIndexLists = self._trigramIndexLists
-				wipe(trigramIndexLists)
-				local trigramValues = TempTable.Acquire()
-				local usedSubStrTemp = private.usedTrigramSubStrTemp
-				wipe(usedSubStrTemp)
-				for i = 1, #self._uuids do
-					local uuid = self._uuids[i]
-					local value = private.TrigramValueFunc(uuid, self, self._trigramIndexField)
-					trigramValues[uuid] = value
-					for word in String.SplitIterator(value, " ") do
-						for j = 1, #word - 2 do
-							local subStr = strsub(word, j, j + 2)
-							if usedSubStrTemp[subStr] ~= uuid then
-								usedSubStrTemp[subStr] = uuid
-								local list = trigramIndexLists[subStr]
-								if not list then
-									trigramIndexLists[subStr] = { uuid }
-								else
-									list[#list + 1] = uuid
-								end
-							end
-						end
-					end
-				end
-				-- sort all the trigram index lists
-				for _, list in pairs(trigramIndexLists) do
-					Table.Sort(list)
-				end
-				TempTable.Release(trigramValues)
+				self:_TrigramIndexBuild()
 			end
 		end
 		self:_UpdateQueries()
@@ -1073,6 +1050,36 @@ function DatabaseTable.__private:_IndexListRemove(field, uuid)
 	tremove(indexList, deleteIndex)
 end
 
+function DatabaseTable.__private:_TrigramIndexBuild()
+	local trigramIndexLists = self._trigramIndexLists
+	wipe(trigramIndexLists)
+	local usedSubStrTemp = private.usedTrigramSubStrTemp
+	wipe(usedSubStrTemp)
+	for i = 1, #self._uuids do
+		local uuid = self._uuids[i]
+		local value = private.TrigramValueFunc(uuid, self, self._trigramIndexField)
+		for word in String.SplitIterator(value, " ") do
+			for j = 1, #word - 2 do
+				local subStr = strsub(word, j, j + 2)
+				if usedSubStrTemp[subStr] ~= uuid then
+					usedSubStrTemp[subStr] = uuid
+					local list = trigramIndexLists[subStr]
+					if not list then
+						trigramIndexLists[subStr] = { uuid }
+					else
+						list[#list + 1] = uuid
+					end
+				end
+			end
+		end
+	end
+	-- sort all the trigram index lists
+	for _, list in pairs(trigramIndexLists) do
+		Table.Sort(list)
+	end
+	self._trigramIndexBuilt = true
+end
+
 function DatabaseTable.__private:_TrigramIndexInsert(uuid)
 	local field = self._trigramIndexField
 	local indexValue = private.TrigramValueFunc(uuid, self, field)
@@ -1129,7 +1136,7 @@ function DatabaseTable:_InsertRow(row, values)
 	for indexField in pairs(self._indexLists) do
 		self:_IndexListInsert(indexField, uuid)
 	end
-	if self._trigramIndexField then
+	if self._trigramIndexField and self._trigramIndexBuilt then
 		self:_TrigramIndexInsert(uuid)
 	end
 	self:_UpdateQueries()
@@ -1186,7 +1193,7 @@ function DatabaseTable:_UpdateRow(row, changeContext)
 		end
 	end
 	TempTable.Release(oldIndexMinIndex)
-	if self._trigramIndexField and changeContext[self._trigramIndexField] ~= nil then
+	if self._trigramIndexField and self._trigramIndexBuilt and changeContext[self._trigramIndexField] ~= nil then
 		self:_TrigramIndexRemove(uuid)
 		self:_TrigramIndexInsert(uuid)
 	end
@@ -1212,6 +1219,10 @@ end
 
 ---@private
 function DatabaseTable:_GetTrigramIndexMatchingRows(value, result)
+	if not self._trigramIndexBuilt then
+		-- The trigram index is built lazily on first use
+		self:_TrigramIndexBuild()
+	end
 	value = strlower(value)
 	local matchingLists = TempTable.Acquire()
 	wipe(private.usedTrigramSubStrTemp)
