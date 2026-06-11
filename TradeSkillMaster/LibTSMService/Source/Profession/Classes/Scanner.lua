@@ -42,6 +42,7 @@ local private = {
 	matStringItemsTemp = {},
 	matQuantitiesTemp = {},
 	matIteratorQuery = nil,
+	scanIssuePrinted = {},
 }
 -- Don't want to scan a bunch of times when the profession first loads so add a 10 frame debounce to update events
 local SCAN_DEBOUNCE_FRAMES = 10
@@ -674,19 +675,36 @@ function private.ScanProfession()
 		private.db:TruncateAndBulkInsertStart()
 		private.matDB:TruncateAndBulkInsertStart()
 		local dbgCount, dbgInvalid = 0, 0
+		local dbgFirstInvalid = nil
 		for i, name, categoryId, difficulty in TradeSkill.RecipeIterator() do
 			local craftString = CraftString.Get(private.classicSpellIdLookup[-i])
 			local recipeScanResult, matScanResult = private.BulkInsertRecipe(craftString, i, name, categoryId, difficulty, -1, 1, 1, -1, -1, TradeSkill.RECIPE_TYPE.UNKNOWN)
 			haveInvalidRecipes = haveInvalidRecipes or not recipeScanResult
 			haveInvalidMats = haveInvalidMats or not matScanResult
 			dbgCount = dbgCount + 1
-			if _G.TSMDBG and (not recipeScanResult or not matScanResult) then
+			if not recipeScanResult or not matScanResult then
 				dbgInvalid = dbgInvalid + 1
-				if dbgInvalid <= 6 then
+				if not dbgFirstInvalid then
+					local resultItem = Scanner.GetResultItem(craftString)
+					dbgFirstInvalid = format("%s (i=%d, cs=%s, recipeOk=%s, matOk=%s, result=%s)", tostring(name), i, tostring(craftString), tostring(recipeScanResult), tostring(matScanResult), tostring(resultItem))
+				end
+				if _G.TSMDBG and dbgInvalid <= 6 then
 					local resultItem, indirectSpellId = Scanner.GetResultItem(craftString)
 					_G.TSMDBG.Log("EnchScan", "INVALID i=%s name=%s cs=%s recipeOk=%s matOk=%s result=%s indirect=%s",
 						tostring(i), tostring(name), tostring(craftString), tostring(recipeScanResult), tostring(matScanResult), tostring(resultItem), tostring(indirectSpellId))
 				end
+			end
+		end
+		-- Auto-print a one-line summary to chat (once per profession per session) when the
+		-- scan looks broken (no recipes iterated or some failed to import), so issues like a
+		-- profession not loading can be diagnosed without any slash commands
+		if dbgCount == 0 or dbgInvalid > 0 then
+			local printKey = tostring(professionName)
+			if not private.scanIssuePrinted[printKey] then
+				private.scanIssuePrinted[printKey] = true
+				print(format("|cff33ff99TSMDBG|r scan '%s': recipes=%d invalid=%d%s%s", printKey, dbgCount, dbgInvalid,
+					dbgFirstInvalid and (" | first invalid: "..dbgFirstInvalid) or "",
+					dbgInvalid > 0 and " | (will keep rescanning until valid)" or ""))
 			end
 		end
 		if _G.TSMDBG then
