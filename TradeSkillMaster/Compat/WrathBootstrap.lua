@@ -673,3 +673,25 @@ do
 		end
 	end)
 end
+
+-- ============================================================================
+-- SOUNDKIT: fill in keys TSM uses that the shared !!!ClassicAPI polyfill misses
+-- ============================================================================
+-- On 3.3.5a PlaySound() expects a string sound name. TSM references SOUNDKIT.ITEM_REPAIR
+-- (e.g. Vendoring repair button), which the shared polyfill doesn't define, so the value was
+-- nil and PlaySound(nil) raised 'Usage: PlaySound("sound")', aborting the repair handler.
+do
+	_G.SOUNDKIT = _G.SOUNDKIT or {}
+	_G.SOUNDKIT.ITEM_REPAIR = _G.SOUNDKIT.ITEM_REPAIR or "ITEM_REPAIR"
+	-- Guard PlaySound so a nil/!-found sound key can never abort a handler on this client
+	if not _G.__tsmPlaySoundGuarded and type(_G.PlaySound) == "function" then
+		local origPlaySound = _G.PlaySound
+		_G.PlaySound = function(sound, ...)
+			if sound == nil then
+				return
+			end
+			return pcall(origPlaySound, sound, ...)
+		end
+		_G.__tsmPlaySoundGuarded = true
+	end
+end
