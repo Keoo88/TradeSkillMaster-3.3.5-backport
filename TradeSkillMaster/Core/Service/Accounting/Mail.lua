@@ -200,6 +200,7 @@ function private.RecordMail(index, subIndex, resolveNames)
 
 		local isValid, itemString, itemQuantity = private.ValidateAuctionItemMail(index, subIndex)
 		if not isValid then
+			print(format("|cff33ff99TSMDBG|r accounting: buy mail #%d NOT recorded (validation failed - bag space / item link)", index))
 			return false
 		end
 		local copper = floor(bid / quantity + 0.5)
@@ -208,6 +209,7 @@ function private.RecordMail(index, subIndex, resolveNames)
 		end
 		local buyTime = (time() + (daysLeft - 30) * SECONDS_PER_DAY)
 		TSM.Accounting.Transactions.InsertAuctionBuy(itemString, quantity, copper, buyer, buyTime)
+		print(format("|cff33ff99TSMDBG|r accounting: recorded buy %s x%d @ %s copper (from %s)", tostring(itemString), quantity or 0, tostring(copper), tostring(buyer)))
 	elseif mailType == Inbox.MAIL_TYPE.SALE.CRAFTING_ORDER then
 		if not private.CanLootMailIndex(index, money) then
 			return false
