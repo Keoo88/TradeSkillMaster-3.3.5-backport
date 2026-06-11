@@ -133,18 +133,29 @@ ItemClass:OnModuleLoad(function()
 			private.classIdLookup[strlower(class)] = classId
 			private.classLookup[class] = {}
 			private.classLookup[class]._index = classId
-			local subClasses = nil
 			if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
-				subClasses = C_AuctionHouse.GetAuctionItemSubClasses(classId)
+				local subClasses = C_AuctionHouse.GetAuctionItemSubClasses(classId)
+				for _, subClassId in pairs(subClasses) do
+					-- In 1.5.8, Blizzard added an invalid classId=0, subClassId=1
+					if classId ~= 0 and subClassId ~= -1 then
+						local subClassName = ItemClass.GetSubClassInfo(classId, subClassId)
+						if subClassName and not strfind(subClassName, "(OBSOLETE)") then
+							private.classLookup[class][subClassName] = subClassId
+						end
+					end
+				end
 			else
-				subClasses = {GetAuctionItemSubClasses(classId)}
-			end
-			for _, subClassId in pairs(subClasses) do
-				-- In 1.5.8, Blizzard added an invalid classId=0, subClassId=1
-				if classId ~= 0 and subClassId ~= -1 then
-					local subClassName = ItemClass.GetSubClassInfo(classId, subClassId)
-					if subClassName and not strfind(subClassName, "(OBSOLETE)") then
-						private.classLookup[class][subClassName] = subClassId
+				-- 3.3.5a: GetAuctionItemSubClasses(classId) takes a 1-based AH *position* (not the
+				-- modern Enum class id) and returns subclass *names*, so feeding the Enum class id and
+				-- treating the result as ids gave subclasses from the wrong class (e.g. Container showed
+				-- Bows/Crossbows). Build straight from Enum.__ItemClassInfo, which is keyed by the real
+				-- Enum subclass id -> localized name, so the dropdown and the GetSubClassId filter agree.
+				local subClassInfo = Enum.__ItemClassInfo and Enum.__ItemClassInfo[classId]
+				if subClassInfo then
+					for subClassId, subClassName in pairs(subClassInfo) do
+						if subClassName and not strfind(subClassName, "(OBSOLETE)") then
+							private.classLookup[class][subClassName] = subClassId
+						end
 					end
 				end
 			end
