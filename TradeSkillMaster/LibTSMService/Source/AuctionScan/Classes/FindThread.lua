@@ -108,6 +108,12 @@ function FindThread.StopFindAuction(noKill)
 	private.callback = nil
 	if not noKill then
 		Threading.Kill(private.threadId)
+		-- The thread callback only fires on a normal exit, so it won't run for a
+		-- killed thread and we must reset the running flag ourselves. Otherwise
+		-- every future StartFindAuction() reschedules itself forever waiting for
+		-- isRunning to clear, no find ever runs, and the Bid/Buyout buttons stay
+		-- permanently disabled (e.g. after buying a lot causes a deselect mid-find).
+		private.isRunning = false
 	end
 end
 
@@ -127,8 +133,15 @@ function private.StartThread()
 		return
 	end
 	if private.isRunning then
-		private.startTimer:RunForTime(0.1)
-		return
+		if not Threading.IsAlive(private.threadId) then
+			-- The previous find thread died without a normal exit (killed or errored),
+			-- so its callback never fired to clear this flag. Recover instead of
+			-- rescheduling forever (which would leave the Bid/Buyout buttons disabled).
+			private.isRunning = false
+		else
+			private.startTimer:RunForTime(0.1)
+			return
+		end
 	end
 	private.isRunning = true
 	private.callback = private.startArgs.callback

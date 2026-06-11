@@ -78,6 +78,13 @@ function Threading.Kill(threadId)
 	Scheduler.GetThread(threadId):Kill()
 end
 
+---Returns whether or not the specified thread is alive (not dead / not yet started).
+---@param threadId string The thread id
+---@return boolean
+function Threading.IsAlive(threadId)
+	return Scheduler.GetThread(threadId):IsAlive()
+end
+
 ---Returns whether or not we're currently in a thread context.
 ---@return boolean
 function Threading.IsThreadContext()
