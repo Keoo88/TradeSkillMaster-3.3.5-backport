@@ -177,7 +177,7 @@ end
 function OperationType:SanitizeOperation(name, settings, silentMissingCommonKeys)
 	local didReset = false
 	if self._sanitizeFunc then
-		self._sanitizeFunc(settings)
+		self._sanitizeFunc(settings, name)
 	end
 	for key, value in pairs(settings) do
 		if not self:HasSetting(key) then
