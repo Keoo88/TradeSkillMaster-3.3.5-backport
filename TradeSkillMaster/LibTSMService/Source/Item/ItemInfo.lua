@@ -694,7 +694,7 @@ function ItemInfo.FetchInfo(item)
 		end
 	end
 	private.pendingItems[itemString] = private.pendingItems[itemString] or PENDING_STATE.NEW
-	if private.priorityPendingTime ~= Clienthen
+	if private.priorityPendingTime ~= ClientInfo.GetFrameNumber() then
 		wipe(private.priorityPendingItems)
 		private.priorityPendingTime = ClientInfo.GetFrameNumber()
 	end
@@ -1193,15 +1193,6 @@ function private.ToWowItemString(itemString)
 	local level = CharacterInfo.GetLevel()
 	local spec = CharacterInfo.GetSpecializationId() or ""
 	return "item:"..itemId.."::::::"..(rand or "").."::"..level..":"..spec..":::"..extraPart..":::"
-end
-Info.GetFrameNumber() then
-		wipe(private.priorityPendingItems)
-		private.priorityPendingTime = ClientInfo.GetFrameNumber()
-	end
-	private.priorityPendingItems[itemString] = true
-
-	private.processInfoTimer:RunForTime(0)
-	return true
 end
 
 ---3.3.5: warm the info cache directly from a real item link.
