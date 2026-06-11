@@ -600,13 +600,42 @@ function AuctionHouseWrapper.PostAuction(bag, slot, duration, stackSize, numAuct
 			error("Invalid commodity status")
 		end
 	else
+		-- 3.3.5: an item only loads into the AH sell slot when the default Auctions tab has been
+		-- shown/initialized. TSM keeps the Blizzard AuctionFrame hidden, so AuctionsItemButton is
+		-- inert and ClickAuctionSellItemButton silently fails (item stays on the cursor, slot empty),
+		-- which made StartAuction post nothing. Mirror Auctionator: ensure the Auctions sell pane is
+		-- active first, then pick up the item, verify it's on the cursor, and drop it into the slot.
+		local auctionFrameWasShown = AuctionFrame and AuctionFrame:IsShown()
+		if AuctionFrame and not auctionFrameWasShown then
+			-- AuctionFrame is kept at scale 0.001 by TSM, so showing it stays invisible to the user
+			AuctionFrame:Show()
+		end
+		if _G["AuctionFrameTab3"] and AuctionFrameTab_OnClick then
+			-- Tab 3 is the Auctions (sell) tab; activating it runs the OnShow that wires up the sell slot
+			AuctionFrameTab_OnClick(_G["AuctionFrameTab3"])
+		end
 		-- Need to set the duration in the default UI to avoid Blizzard errors
 		AuctionFrameAuctions.duration = duration
 		ClearCursor()
 		Container.PickupItem(bag, slot)
-		ClickAuctionSellItemButton(AuctionsItemButton, "LeftButton")
-		local result = private.wrappers.PostAuction:Start(bid, buyout, duration, stackSize, numAuctions, true)
+		if CursorHasItem() then
+			ClickAuctionSellItemButton(AuctionsItemButton, "LeftButton")
+		end
+		local sellName = GetAuctionSellItemInfo()
+		local result = nil
+		if sellName then
+			result = private.wrappers.PostAuction:Start(bid, buyout, duration, stackSize, numAuctions, true)
+		else
+			Log.Err("Failed to load item into AH sell slot (%d, %d)", bag, slot)
+		end
 		ClearCursor()
+		if AuctionFrame and not auctionFrameWasShown then
+			-- Restore the hidden state without ending the AH session (CloseAuctionHouse would stop NPC interaction)
+			local origCloseAuctionHouse = CloseAuctionHouse
+			CloseAuctionHouse = function() end
+			AuctionFrame_Hide()
+			CloseAuctionHouse = origCloseAuctionHouse
+		end
 		return result
 	end
 end
