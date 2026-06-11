@@ -496,14 +496,25 @@ function private.QueueProfessionScan()
 	private.scanTimer:RunForFrames(SCAN_DEBOUNCE_FRAMES)
 end
 
+-- Throttled debug chat print (max 10 per session) to trace why a profession scan
+-- bails out silently - helps diagnose professions not loading without slash commands
+function private.DbgChatTrace(fmtStr, ...)
+	private.scanTracePrints = (private.scanTracePrints or 0) + 1
+	if private.scanTracePrints <= 10 then
+		print("|cff33ff99TSMDBG|r "..format(fmtStr, ...))
+	end
+end
+
 function private.ScanProfession()
 	if ClientInfo.IsInCombat() then
 		-- we are in combat, so try again in a bit
 		private.QueueProfessionScan()
 		return
 	elseif private.disabled then
+		private.DbgChatTrace("scan skipped: scanner disabled")
 		return
 	elseif LibTSMService.GetTime() < private.ignoreUpdatesUntil then
+		private.DbgChatTrace("scan skipped: ignoring updates for %.1fs", private.ignoreUpdatesUntil - LibTSMService.GetTime())
 		return
 	end
 
@@ -520,12 +531,16 @@ function private.ScanProfession()
 	end
 	if not professionName or not TradeSkill.IsDataReady() then
 		-- profession hasn't fully opened yet
+		private.DbgChatTrace("scan waiting: prof=%s dataReady=%s tradeLine=%s numTradeSkills=%s isClassicCrafting=%s",
+			tostring(professionName), tostring(TradeSkill.IsDataReady()), tostring(_G.GetTradeSkillLine and _G.GetTradeSkillLine()),
+			tostring(_G.GetNumTradeSkills and _G.GetNumTradeSkills()), tostring(TradeSkill.IsClassicCrafting()))
 		private.QueueProfessionScan()
 		return
 	end
 
 	if TradeSkill.ClearFilters() then
 		-- An update event will be triggered
+		private.DbgChatTrace("scan '%s': cleared filters, waiting for update event", tostring(professionName))
 		return
 	end
 
@@ -695,17 +710,16 @@ function private.ScanProfession()
 				end
 			end
 		end
-		-- Auto-print a one-line summary to chat (once per profession per session) when the
-		-- scan looks broken (no recipes iterated or some failed to import), so issues like a
-		-- profession not loading can be diagnosed without any slash commands
-		if dbgCount == 0 or dbgInvalid > 0 then
-			local printKey = tostring(professionName)
-			if not private.scanIssuePrinted[printKey] then
-				private.scanIssuePrinted[printKey] = true
-				print(format("|cff33ff99TSMDBG|r scan '%s': recipes=%d invalid=%d%s%s", printKey, dbgCount, dbgInvalid,
-					dbgFirstInvalid and (" | first invalid: "..dbgFirstInvalid) or "",
-					dbgInvalid > 0 and " | (will keep rescanning until valid)" or ""))
-			end
+		-- Auto-print a one-line summary to chat (once per profession per session) so issues
+		-- like a profession not loading can be diagnosed without any slash commands
+		local printKey = tostring(professionName)
+		if not private.scanIssuePrinted[printKey] then
+			private.scanIssuePrinted[printKey] = true
+			local profType = TradeSkill.GetType()
+			print(format("|cff33ff99TSMDBG|r scan '%s': recipes=%d invalid=%d type=%s%s%s%s", printKey, dbgCount, dbgInvalid, tostring(profType),
+				dbgFirstInvalid and (" | first invalid: "..dbgFirstInvalid) or "",
+				dbgInvalid > 0 and " | (will keep rescanning until valid)" or "",
+				profType ~= TradeSkill.TYPE.PLAYER and " | NOT imported (non-player profession!)" or ""))
 		end
 		if _G.TSMDBG then
 			_G.TSMDBG.Log("EnchScan", "classic scan loop done iterated=%d invalid=%d", dbgCount, dbgInvalid)
