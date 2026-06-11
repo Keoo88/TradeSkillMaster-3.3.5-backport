@@ -133,11 +133,22 @@ function private.OnProfileUpdated()
 end
 
 function private.LoadDBSettings()
+	local operations = nil
 	if private.settings.globalOperations then
-		Operation.Load(private.settings.sharedOperations)
+		operations = private.settings.sharedOperations
 	else
-		Operation.Load(private.settings.operations)
+		operations = private.settings.operations
 	end
+	if not operations then
+		-- The "operations" settings callback fires for every profile while
+		-- SetStoredGlobally() is mid-transition, at which point the operations
+		-- table for the current scope can still be nil. Don't load a nil table
+		-- (it'd wipe Operation's state and cause cascading errors) - the final
+		-- OnProfileUpdated() at the end of SetStoredGlobally() will load the
+		-- real table once the transition is complete.
+		return
+	end
+	Operation.Load(operations)
 end
 
 function private.ValidateCraftingCraftPriceMethod(value, operationName)
