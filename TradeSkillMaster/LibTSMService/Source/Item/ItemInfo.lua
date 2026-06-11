@@ -38,6 +38,7 @@ local private = {
 	deferredSetSingleFieldTimer = nil,
 	giveUpTime = {},
 	giveUpRounds = {},
+	serverRequested = {},
 }
 local ITEM_MAX_ID = 999999
 local ITEM_INFO_INTERVAL = 0.05
@@ -693,7 +694,7 @@ function ItemInfo.FetchInfo(item)
 		end
 	end
 	private.pendingItems[itemString] = private.pendingItems[itemString] or PENDING_STATE.NEW
-	if private.priorityPendingTime ~= ClientInfo.GetFrameNumber() then
+	if private.priorityPendingTime ~= Clienthen
 		wipe(private.priorityPendingItems)
 		private.priorityPendingTime = ClientInfo.GetFrameNumber()
 	end
@@ -864,6 +865,8 @@ function private.ProcessPendingItemInfo(itemString)
 			-- 3.3.5: remember when we gave up so a later real UI request can retry (see FetchInfo)
 			private.giveUpTime[itemString] = LibTSMService.GetTime()
 		end
+		-- Require a fresh server request before burning attempts again if this item gets revived
+		private.serverRequested[itemString] = nil
 		private.pendingItems[itemString] = nil
 		private.priorityPendingItems[itemString] = nil
 	elseif name and name ~= "" and quality and quality >= 0 and itemLevel and itemLevel >= 0 then
@@ -873,10 +876,20 @@ function private.ProcessPendingItemInfo(itemString)
 		private.numRequests[itemString] = nil
 		private.giveUpTime[itemString] = nil
 		private.giveUpRounds[itemString] = nil
+		private.serverRequested[itemString] = nil
 	else
 		-- Request info for this item
-		if not private.StoreGetItemInfo(itemString) then
-			private.numRequests[itemString] = (private.numRequests[itemString] or 0) + 1
+		local gotInfo, requestedFromServer = private.StoreGetItemInfo(itemString)
+		if not gotInfo then
+			if requestedFromServer then
+				private.serverRequested[itemString] = true
+			end
+			-- 3.3.5: only burn give-up attempts once we actually managed to send a server
+			-- request for this item; otherwise a large pending queue exhausts all attempts
+			-- via the global request throttle before the item ever had a chance to resolve
+			if LibTSMService.IsRetail() or private.serverRequested[itemString] then
+				private.numRequests[itemString] = (private.numRequests[itemString] or 0) + 1
+			end
 			return true
 		end
 	end
@@ -1128,13 +1141,512 @@ function private.StoreGetItemInfo(itemString)
 		end
 	end
 
+	local requestedFromServer = false
 	if not gotInfo and not LibTSMService.IsRetail() then
 		-- 3.3.5: GetItemInfo() doesn't query the server for uncached items, so force
 		-- the query via a hidden tooltip; the regular polling will then pick it up
-		Item.RequestServerCache(ItemString.ToId(baseItemString))
+		requestedFromServer = Item.RequestServerCache(ItemString.ToId(baseItemString))
 	end
 
-	return gotInfo
+	return gotInfo, requestedFromServer
+end
+
+function private.ProcessAvailableItems()
+	private.cache:SetQueryUpdatesPaused(true)
+
+	-- Bulk insert items we didn't previously know about
+	private.cache:BulkPrepareRows(private.availableItems)
+
+	-- Remove the items we process after processing them all because GET_ITEM_INFO_RECEIVED events may fire as we do this
+	local processedItems = TempTable.Acquire()
+	for itemString in pairs(private.availableItems) do
+		processedItems[itemString] = true
+		if private.StoreGetItemInfo(itemString) then
+			private.pendingItems[itemString] = nil
+			private.priorityPendingItems[itemString] = nil
+		end
+	end
+	for itemString in pairs(processedItems) do
+		private.availableItems[itemString] = nil
+	end
+	TempTable.Release(processedItems)
+
+	private.cache:SetQueryUpdatesPaused(false)
+end
+
+function private.GetDBVersionStr()
+	local buildVersion, buildNum = ClientInfo.GetBuildInfo()
+	return strjoin(",", DB_VERSION, ClientInfo.GetLocale(), buildVersion, buildNum)
+end
+
+function private.ToWowItemString(itemString)
+	local itemStringLevel = ItemString.ParseLevel(itemString)
+	local itemId, rand, extraPart = nil, nil, nil
+	if itemStringLevel then
+		itemId, rand = select(2, strsplit(":", itemString))
+		extraPart = BonusIds.GetBonusStringForLevel(itemStringLevel) or ""
+	else
+		local _, extra = nil, nil
+		itemId, rand, extra = select(2, strsplit(":", itemString))
+		extraPart = extra and strmatch(itemString, "i:[0-9]+:[0-9%-]*:(.+)") or ""
+	end
+	local level = CharacterInfo.GetLevel()
+	local spec = CharacterInfo.GetSpecializationId() or ""
+	return "item:"..itemId.."::::::"..(rand or "").."::"..level..":"..spec..":::"..extraPart..":::"
+end
+Info.GetFrameNumber() then
+		wipe(private.priorityPendingItems)
+		private.priorityPendingTime = ClientInfo.GetFrameNumber()
+	end
+	private.priorityPendingItems[itemString] = true
+
+	private.processInfoTimer:RunForTime(0)
+	return true
+end
+
+---3.3.5: warm the info cache directly from a real item link.
+---
+---GetItemInfo by ID polls the server and returns nil until the item lands in the
+---client cache, which makes ID-based FetchInfo race against bag/post scans. An item
+---we actually hold (bag/bank/mail) is already in the client cache, so its live link
+---resolves GetItemInfo synchronously. Use that to fill name/quality/vendorSell now,
+---so the scan that follows sees valid data instead of "?" / nil price.
+---@param link string The real item link
+---@return boolean success Whether the cache was warmed
+function ItemInfo.FetchInfoByLink(link)
+	if type(link) ~= "string" then
+		return false
+	end
+	local itemString = ItemString.Get(link)
+	if not itemString or not ItemString.IsItem(itemString) then
+		return false
+	end
+	local baseItemString = ItemString.GetBaseFast(itemString)
+	if private.cache:GetField(baseItemString, "name") then
+		-- already cached
+		return true
+	end
+	local name, _, quality, itemLevel, minLevel, maxStack, vendorSell, isBOP, expansionId, isCraftingReagent = Item.GetInfo(link)
+	if not name or name == "" or not quality or quality < 0 then
+		return false
+	end
+	if not ClientInfo.HasFeature(ClientInfo.FEATURES.CRAFTING_QUALITY) then
+		expansionId = -1
+	end
+	private.StoreGetItemInfoInstant(baseItemString)
+	private.cache:SetQueriedFields(baseItemString, name, minLevel or 0, itemLevel or 0, maxStack or 1, vendorSell or 0, quality, isBOP or 0, isCraftingReagent and 1 or 0, expansionId or -1, -1)
+	return true
+end
+
+
+---Generalize an item link.
+---@param itemLink string The item link
+---@return string?
+function ItemInfo.GeneralizeLink(itemLink)
+	local itemString = ItemString.Get(itemLink)
+	if not itemString then return end
+	if ItemString.IsItem(itemString) and not strmatch(itemString, "i:[0-9]+:[0-9%-]*:[0-9]*") then
+		-- swap out the itemString part of the link
+		local leader, quality, _, name, trailer, trailer2, extra = strsplit("\124", itemLink)
+		if trailer2 and not extra then
+			return strjoin("\124", leader, quality, "H"..private.ToWowItemString(itemString), name, trailer, trailer2)
+		end
+	end
+	return ItemInfo.GetLink(itemString)
+end
+
+---Creates a query which matches the specified item filter.
+---@param itemFilter ItemFilter The item filter
+---@param query? DatabaseQuery Optionally, an existing query to reset and reuse
+---@return DatabaseQuery
+function ItemInfo.MatchItemFilterQuery(itemFilter, query)
+	if query then
+		query:Reset()
+	else
+		query = private.cache:NewQuery()
+	end
+
+	local str = itemFilter:GetStr()
+	if str then
+		if itemFilter:GetExactOnly() then
+			query:Equal("name", str)
+		else
+			query:Contains("name", str)
+		end
+	end
+	local minQuality = itemFilter:GetMinQuality()
+	if minQuality then
+		query:GreaterThanOrEqual("quality", minQuality)
+	end
+	local maxQuality = itemFilter:GetMaxQuality()
+	if maxQuality then
+		query:LessThanOrEqual("quality", maxQuality)
+	end
+	local minLevel = itemFilter:GetMinLevel()
+	if minLevel then
+		query:GreaterThanOrEqual("minLevel", minLevel)
+	end
+	local maxLevel = itemFilter:GetMaxLevel()
+	if maxLevel then
+		query:LessThanOrEqual("minLevel", maxLevel)
+	end
+	local minItemLevel = itemFilter:GetMinItemLevel()
+	if minItemLevel then
+		query:GreaterThanOrEqual("itemLevel", minItemLevel)
+	end
+	local maxItemLevel = itemFilter:GetMaxItemLevel()
+	if maxItemLevel then
+		query:LessThanOrEqual("itemLevel", maxItemLevel)
+	end
+	local classId = itemFilter:GetClass()
+	if classId then
+		query:Equal("classId", classId)
+	end
+	local subClassId = itemFilter:GetSubClass()
+	if subClassId then
+		query:Equal("subClassId", subClassId)
+	end
+	local invSlotId = itemFilter:GetInvSlotId()
+	if invSlotId then
+		query:Equal("invSlotId", invSlotId)
+	end
+
+	return query
+end
+
+
+
+-- ============================================================================
+-- Helper Functions
+-- ============================================================================
+
+function private.GetFieldValueHelper(itemString, field, baseIsSame, storeBaseValue, petDefaultValue)
+	local value = private.cache:GetField(itemString, field)
+	if value ~= nil then
+		return value
+	end
+	ItemInfo.FetchInfo(itemString)
+	if ItemString.IsPet(itemString) then
+		-- We can fetch info instantly for pets so try again
+		value = private.cache:GetField(itemString, field)
+		if value == nil and petDefaultValue ~= nil then
+			value = petDefaultValue
+			private.DeferSetSingleField(itemString, field, value)
+		end
+	end
+	if value == nil and baseIsSame then
+		-- The value is the same for the base item
+		local baseItemString = ItemString.GetBase(itemString)
+		if baseItemString ~= itemString then
+			value = private.GetFieldValueHelper(baseItemString, field)
+			if value ~= nil and storeBaseValue then
+				private.DeferSetSingleField(itemString, field, value)
+			end
+		end
+	end
+	return value
+end
+
+function private.ProcessPendingItemInfo(itemString)
+	local name = private.cache:GetField(itemString, "name")
+	local quality = private.cache:GetField(itemString, "quality")
+	local itemLevel = private.cache:GetField(itemString, "itemLevel")
+	if (private.numRequests[itemString] or 0) > MAX_REQUESTS_PER_ITEM then
+		-- Give up on this item
+		if private.numRequests[itemString] ~= math.huge then
+			private.numRequests[itemString] = math.huge
+			local itemId = ItemString.IsItem(itemString) and ItemString.ToId(itemString) or nil
+			if LibTSMService.IsRetail() then
+				Log.Err("Giving up on item info for %s", itemString)
+			end
+			if itemId and itemString == ItemString.GetBaseFast(itemString) then
+				private.numRequests[itemId] = math.huge
+			end
+			-- 3.3.5: remember when we gave up so a later real UI request can retry (see FetchInfo)
+			private.giveUpTime[itemString] = LibTSMService.GetTime()
+		end
+		private.pendingItems[itemString] = nil
+		private.priorityPendingItems[itemString] = nil
+	elseif name and name ~= "" and quality and quality >= 0 and itemLevel and itemLevel >= 0 then
+		-- We have info for this item
+		private.pendingItems[itemString] = nil
+		private.priorityPendingItems[itemString] = nil
+		private.numRequests[itemString] = nil
+		private.giveUpTime[itemString] = nil
+		private.giveUpRounds[itemString] = nil
+		private.serverRequested[itemString] = nil
+	else
+		-- Request info for this item
+		local gotInfo, requestedFromServer = private.StoreGetItemInfo(itemString)
+		if not gotInfo then
+			if requestedFromServer then
+				private.serverRequested[itemString] = true
+			end
+			-- 3.3.5: only burn give-up attempts once we actually managed to send a server
+			-- request for this item; otherwise a large pending queue exhausts all attempts
+			-- via the global request throttle before the item ever had a chance to resolve
+			if LibTSMService.IsRetail() or private.serverRequested[itemString] then
+				private.numRequests[itemString] = (private.numRequests[itemString] or 0) + 1
+			end
+			return true
+		end
+	end
+	return false
+end
+
+function private.ProcessItemInfo()
+	private.processInfoTimer:RunForTime(ITEM_INFO_INTERVAL)
+	if ClientInfo.IsInCombat() then
+		return
+	end
+	local startTime = LibTSMService.GetTime()
+	private.cache:SetQueryUpdatesPaused(true)
+
+	-- Create rows for items which don't exist at all in the DB in bulk
+	local newItems = TempTable.Acquire()
+	for itemString, state in pairs(private.pendingItems) do
+		if state == PENDING_STATE.NEW then
+			newItems[itemString] = true
+			private.pendingItems[itemString] = PENDING_STATE.CREATED
+		end
+	end
+	private.cache:BulkPrepareRows(newItems, true)
+	TempTable.Release(newItems)
+
+	-- Get the pending items
+	local priorityPendingItems = TempTable.Acquire()
+	local pendingItems = TempTable.Acquire()
+	for itemString in pairs(private.pendingItems) do
+		if private.priorityPendingItems[itemString] then
+			tinsert(priorityPendingItems, itemString)
+		else
+			tinsert(pendingItems, itemString)
+		end
+	end
+
+	-- Throttle the max number of item info requests based on the frame rate
+	local framerate = ClientInfo.GetFrameRate()
+	local maxRequests = nil
+	if framerate < 30 then
+		maxRequests = MAX_REQUESTED_ITEM_INFO / 5
+	elseif framerate < 60 then
+		maxRequests = MAX_REQUESTED_ITEM_INFO / 3
+	elseif framerate < 100 then
+		maxRequests = MAX_REQUESTED_ITEM_INFO / 2
+	else
+		maxRequests = MAX_REQUESTED_ITEM_INFO
+	end
+
+	local shouldStop = false
+	local numRequested = 0
+	-- Do the priority items first
+	for i = 1, #priorityPendingItems do
+		if private.ProcessPendingItemInfo(priorityPendingItems[i]) then
+			numRequested = numRequested + 1
+			if numRequested >= maxRequests then
+				shouldStop = true
+				break
+			end
+		end
+		if (LibTSMService.GetTime() - startTime) > ITEM_INFO_INTERVAL / 5 and numRequested >= maxRequests / 2 then
+			-- Bail early since we've already used a good number of CPU cycles this frame
+			shouldStop = true
+			break
+		end
+	end
+	if not shouldStop then
+		for i = 1, #pendingItems do
+			if private.ProcessPendingItemInfo(pendingItems[i]) then
+				numRequested = numRequested + 1
+				if numRequested >= maxRequests then
+					shouldStop = true
+					break
+				end
+			end
+			if (LibTSMService.GetTime() - startTime) > ITEM_INFO_INTERVAL / 5 and numRequested >= maxRequests / 2 then
+				-- Bail early since we've already used a good number of CPU cycles this frame
+				shouldStop = true
+				break
+			end
+		end
+	end
+	if #pendingItems > 0 and LibTSMService.GetTime() - private.lastDebugLog > 5 then
+		private.lastDebugLog = LibTSMService.GetTime()
+		Log.Info("%d/%d pending items (just requested %d)", #pendingItems, #priorityPendingItems, numRequested)
+	end
+	TempTable.Release(pendingItems)
+	TempTable.Release(priorityPendingItems)
+
+	if private.rebuildStage == REBUILD_STAGE.IDLE and numRequested >= maxRequests / 2 and Table.Count(private.pendingItems) >= REBUILD_MSG_THRESHOLD then
+		private.rebuildStage = REBUILD_STAGE.TRIGGERED
+		-- Delay this message to make it more likely to be seen and make sure we're actually rebuilding
+		local timer = DelayTimer.New("ITEM_INFO_REBUILD_MESSAGE", private.ShowRebuildMessage)
+		timer:RunForTime(1)
+	end
+	if not next(private.pendingItems) then
+		if private.rebuildStage == REBUILD_STAGE.NOTIFIED then
+			private.rebuildCallback(true)
+			private.rebuildStage = REBUILD_STAGE.IDLE
+		end
+		private.processInfoTimer:Cancel()
+	end
+
+	private.cache:SetQueryUpdatesPaused(false)
+end
+
+function private.ShowRebuildMessage()
+	if Table.Count(private.pendingItems) < REBUILD_MSG_THRESHOLD then
+		-- no longer rebuilding
+		private.rebuildStage = REBUILD_STAGE.IDLE
+		return
+	end
+	private.rebuildCallback(false)
+	private.rebuildStage = REBUILD_STAGE.NOTIFIED
+end
+
+function private.DeferSetSingleField(itemString, key, value)
+	if type(value) == "boolean" then
+		value = value and 1 or 0
+	end
+	if key ~= "name" then
+		ItemInfoCache.CheckFieldValue(key, value)
+	end
+	Table.InsertMultiple(private.deferredSetSingleField, itemString, key, value)
+	private.deferredSetSingleFieldTimer:RunForFrames(0)
+end
+
+function private.HandleDeferredSetSingleField()
+	for _, itemString, key, value in Table.StrideIterator(private.deferredSetSingleField, 3) do
+		private.cache:UpdateField(itemString, key, value)
+	end
+end
+
+function private.StoreGetItemInfoInstant(itemString)
+	local itemStringType, id, extra1, extra2 = strmatch(itemString, "^([pi]):([0-9]+):?([0-9]*):?([0-9]*)")
+	id = tonumber(id)
+	if private.cache:GetField(itemString, "texture") and private.cache:GetField(itemString, "invSlotId") then
+		-- we already have info cached for this item
+		return
+	end
+	if itemStringType == "p" then
+		extra1 = tonumber(strmatch(extra1, "i(%d+)") or extra1)
+	else
+		extra1 = tonumber(extra1)
+	end
+	extra2 = tonumber(extra2)
+
+	if itemStringType == "i" then
+		local texture, classId, subClassId, invSlotId = Item.GetInfoInstant(id)
+		if not texture then
+			return
+		end
+		private.cache:SetPreloadedFields(itemString, texture, classId, subClassId, invSlotId)
+	elseif itemStringType == "p" then
+		if not ClientInfo.HasFeature(ClientInfo.FEATURES.BATTLE_PETS) then
+			return
+		end
+		local name, texture, petTypeId = Item.GetPetInfo(id)
+		if not texture then
+			return
+		end
+		-- We can now store all the info for this pet
+		local classId = ItemClass.GetPetClassId()
+		local subClassId = petTypeId - 1
+		local invSlotId = 0
+		local minLevel = extra1 or 0
+		local itemLevel = extra1 or 0
+		local quality = extra2 or 0
+		local maxStack = 1
+		local vendorSell = 0
+		local isBOP = 0
+		local isCraftingReagent = 0
+		local expansionId = -1
+		local craftedQuality = -1
+		private.cache:SetAllFields(itemString, texture, classId, subClassId, invSlotId, name, minLevel, itemLevel, maxStack, vendorSell, quality, isBOP, isCraftingReagent, expansionId, craftedQuality)
+		local baseItemString = ItemString.GetBase(itemString)
+		if baseItemString ~= itemString then
+			minLevel = 0
+			itemLevel = 0
+			quality = 0
+			private.cache:SetAllFields(baseItemString, texture, classId, subClassId, invSlotId, name, minLevel, itemLevel, maxStack, vendorSell, quality, isBOP, isCraftingReagent, expansionId, craftedQuality)
+		end
+	else
+		assert("Invalid itemString: "..itemString)
+	end
+end
+
+function private.StoreGetItemInfo(itemString)
+	private.StoreGetItemInfoInstant(itemString)
+	assert(ItemString.IsItem(itemString))
+	local wowItemString = private.ToWowItemString(itemString)
+	local baseItemString = ItemString.GetBase(itemString)
+	local baseWowItemString = private.ToWowItemString(baseItemString)
+
+	local name, link, quality, itemLevel, minLevel, maxStack, vendorSell, isBOP, expansionId, isCraftingReagent = Item.GetInfo(baseWowItemString)
+	if NON_VENDORABLE_ITEMS[baseItemString] then
+		vendorSell = 0
+	end
+	local craftedQuality = nil
+	local craftedQualityExp = nil
+	if not ClientInfo.HasFeature(ClientInfo.FEATURES.CRAFTING_QUALITY) then
+		expansionId = -1
+		craftedQuality = -1
+	elseif link then
+		craftedQualityExp, craftedQuality = strmatch(link, "\124A:Professions%-ChatIcon%-Quality([%-%d]*)-Tier([0-9]+)")
+		craftedQuality = (tonumber(craftedQualityExp) and craftedQuality) and tonumber(craftedQuality) + 10 or tonumber(craftedQuality) or -1
+	end
+	isCraftingReagent = isCraftingReagent and 1 or 0
+
+	-- Store info for the base item
+	if name and quality and craftedQuality then
+		private.cache:SetQueriedFields(baseItemString, name, minLevel, itemLevel, maxStack, vendorSell, quality, isBOP, isCraftingReagent, expansionId, craftedQuality)
+	end
+	local gotInfo = true
+	if not name or name == "" or not quality or quality < 0 or not itemLevel or itemLevel < 0 or not craftedQuality then
+		gotInfo = false
+	end
+
+	-- Store info for the specific item if it's different
+	if itemString ~= baseItemString then
+		-- Get new values of the fields which can change from the base item
+		local baseVendorSell = vendorSell
+		local _
+		name, _, quality, _, minLevel, _, vendorSell = Item.GetInfo(wowItemString)
+		-- Some items (i.e. "i:130064::2:196:1812") produce a negative vendor sell, so just use the base one
+		if vendorSell and vendorSell < 0 then
+			vendorSell = baseVendorSell
+		end
+		itemLevel = Item.GetDetailedItemLevel(wowItemString)
+		if name or quality or itemLevel or maxStack then
+			if not name then
+				name = ""
+				minLevel = -1
+			end
+			quality = quality or -1
+			itemLevel = itemLevel or -1
+			expansionId = expansionId or -1
+			if not maxStack then
+				maxStack = -1
+				vendorSell = -1
+				isBOP = -1
+				isCraftingReagent = -1
+			end
+			craftedQuality = -1
+			private.cache:SetQueriedFields(itemString, name, minLevel, itemLevel, maxStack, vendorSell, quality, isBOP, isCraftingReagent, expansionId, craftedQuality)
+		end
+		if not name or name == "" or not quality or quality < 0 or not itemLevel or itemLevel < 0 then
+			gotInfo = false
+		end
+	end
+
+	local requestedFromServer = false
+	if not gotInfo and not LibTSMService.IsRetail() then
+		-- 3.3.5: GetItemInfo() doesn't query the server for uncached items, so force
+		-- the query via a hidden tooltip; the regular polling will then pick it up
+		requestedFromServer = Item.RequestServerCache(ItemString.ToId(baseItemString))
+	end
+
+	return gotInfo, requestedFromServer
 end
 
 function private.ProcessAvailableItems()

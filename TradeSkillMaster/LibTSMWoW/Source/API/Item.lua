@@ -107,12 +107,12 @@ end
 ---@param itemId number The item ID
 function Item.RequestServerCache(itemId)
 	if LibTSMWoW.IsRetail() or not itemId then
-		return
+		return false
 	end
 	local now = GetTime()
 	local lastRequest = private.cacheRequestTimes[itemId]
 	if lastRequest and now - lastRequest < CACHE_REQUEST_COOLDOWN then
-		return
+		return false
 	end
 	-- Global throttle so a huge pending queue can't flood the server with item queries
 	if now - private.cacheRequestWindowStart >= 1 then
@@ -120,7 +120,7 @@ function Item.RequestServerCache(itemId)
 		private.cacheRequestWindowCount = 0
 	end
 	if private.cacheRequestWindowCount >= MAX_CACHE_REQUESTS_PER_SEC then
-		return
+		return false
 	end
 	private.cacheRequestWindowCount = private.cacheRequestWindowCount + 1
 	private.cacheRequestTimes[itemId] = now
@@ -130,6 +130,7 @@ function Item.RequestServerCache(itemId)
 	private.cacheTooltip:SetOwner(UIParent, "ANCHOR_NONE")
 	pcall(private.cacheTooltip.SetHyperlink, private.cacheTooltip, "item:"..itemId..":0:0:0:0:0:0:0")
 	private.cacheTooltip:Hide()
+	return true
 end
 
 ---Gets the detailed item level for an item.
