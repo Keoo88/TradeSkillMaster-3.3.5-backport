@@ -8,7 +8,10 @@
 -- /tsmstate           — дамп текущего FSM-состояния AH-сканера
 -- /tsmrows            — дамп всех Browse-rows + первого SubRow каждого
 -- /tsmenv             — дамп информации об окружении (что есть в _G)
+-- /tsmmem             — отчёт по памяти (реальная vs мусор, топ БД по строкам)
 -- ============================================================================
+
+local TSM_ADDON_TABLE = select(2, ...)
 
 if not _G.TSMDBG then
 	-- TSMDebug.lua должен был загрузиться раньше — но защитимся
@@ -209,4 +212,87 @@ SlashCmdList["TSMMAIL"] = DumpInbox
 SLASH_TSMAHCAT1 = "/tsmahcat"
 SlashCmdList["TSMAHCAT"] = DumpAHCategories
 
-TSMDBG.Log("CMD", "Slash commands registered: /tsmenv /tsmscan /tsmrows /tsmstate /tsmmail /tsmahcat")
+-- /tsmmem — отчёт по памяти: сколько реально занято vs мусор, топ внутренних
+-- баз данных по строкам, размер кэша предметов и дебаг-логов
+local function MemReport()
+	print("|cff00ff00TSMDBG mem:|r")
+	local lines = {}
+	local function out(fmtStr, ...)
+		local ok, s = pcall(string.format, fmtStr, ...)
+		if not ok then s = tostring(fmtStr) end
+		print("  " .. s)
+		lines[#lines + 1] = s
+	end
+
+	local luaBefore = collectgarbage("count")
+	local tsmBefore = nil
+	if UpdateAddOnMemoryUsage and GetAddOnMemoryUsage then
+		UpdateAddOnMemoryUsage()
+		tsmBefore = GetAddOnMemoryUsage("TradeSkillMaster")
+	end
+	collectgarbage("collect")
+	local luaAfter = collectgarbage("count")
+	local tsmAfter = nil
+	if UpdateAddOnMemoryUsage and GetAddOnMemoryUsage then
+		UpdateAddOnMemoryUsage()
+		tsmAfter = GetAddOnMemoryUsage("TradeSkillMaster")
+	end
+	out("Lua total: %.1f MB -> %.1f MB after GC (%.1f MB was garbage)", luaBefore / 1024, luaAfter / 1024, (luaBefore - luaAfter) / 1024)
+	if tsmBefore and tsmAfter then
+		out("TSM addon: %.1f MB -> %.1f MB after GC", tsmBefore / 1024, tsmAfter / 1024)
+	end
+
+	-- Топ внутренних БД по количеству строк
+	local okDb, Database = pcall(function()
+		return TSM_ADDON_TABLE.LibTSMUtil:Include("Database")
+	end)
+	if okDb and Database then
+		local dbs = {}
+		local okIter, iterErr = pcall(function()
+			for _, name in Database.InfoNameIterator() do
+				local okRows, rows = pcall(Database.GetNumRows, name)
+				local okQueries, queries = pcall(Database.GetNumActiveQueries, name)
+				rows = okRows and rows or 0
+				queries = okQueries and queries or 0
+				if rows > 0 or queries > 0 then
+					dbs[#dbs + 1] = { name = name, rows = rows, queries = queries }
+				end
+			end
+		end)
+		if okIter then
+			table.sort(dbs, function(a, b) return a.rows > b.rows end)
+			local totalRows = 0
+			for i = 1, #dbs do totalRows = totalRows + dbs[i].rows end
+			out("databases: %d non-empty, %d total rows; top by rows:", #dbs, totalRows)
+			for i = 1, math.min(12, #dbs) do
+				local db = dbs[i]
+				out("  %-32s rows=%-6d activeQueries=%d", db.name, db.rows, db.queries)
+			end
+		else
+			out("databases: iteration failed (%s)", tostring(iterErr))
+		end
+	else
+		out("databases: Database module not available")
+	end
+
+	-- Размер сохранённого кэша предметов
+	local itemDB = _G.TSMItemInfoDB
+	if itemDB and type(itemDB.data) == "string" then
+		out("TSMItemInfoDB: saved data string %.1f KB", #itemDB.data / 1024)
+	end
+
+	-- Размер дебаг-логов
+	local ddb = _G.TSMDebugDB
+	if ddb then
+		local numSnapshots = 0
+		for _ in pairs(ddb.snapshots or {}) do numSnapshots = numSnapshots + 1 end
+		out("TSMDebugDB: logs=%d logsPrev=%d errors=%d snapshots=%d", #(ddb.logs or {}), #(ddb.logsPrev or {}), #(ddb.errors or {}), numSnapshots)
+	end
+
+	TSMDBG.Dump("/tsmmem", lines)
+end
+
+SLASH_TSMMEM1 = "/tsmmem"
+SlashCmdList["TSMMEM"] = MemReport
+
+TSMDBG.Log("CMD", "Slash commands registered: /tsmenv /tsmscan /tsmrows /tsmstate /tsmmail /tsmahcat /tsmmem")
