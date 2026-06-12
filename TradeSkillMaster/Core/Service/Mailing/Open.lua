@@ -210,19 +210,22 @@ function private.GetOpenMailMessage(index)
 		local itemName, seller, bid, _, _, _, _, _, quantity = Inbox.GetInvoiceInfo(index)
 		seller = seller or AUCTION_HOUSE_MAIL_MULTIPLE_SELLERS
 		local itemLink = Mail.GetInboxItemLink(index) or "["..tostring(itemName).."]"
-		-- 3.3.5: GetInboxInvoiceInfo не возвращает count; берём из attachment.
-		if not quantity then
+		-- 3.3.5a: 0 is truthy in Lua, so a 0 count (invoice mail has no attachment) slipped past the old
+		-- 'if not quantity' check and the log showed 'Sold/Bought ... x0'. Treat 0 as missing.
+		if not quantity or quantity == 0 then
 			local _, _, attachQty = private.GetMailItemInfo(index)
-			quantity = attachQty or 1
+			quantity = (attachQty and attachQty > 0) and attachQty or 1
 		end
 		return format(L["Bought %sx%d for %s from %s"], itemLink, quantity, private.FormatMoney(bid or 0, "FEEDBACK_RED"), seller)
 	elseif mailType == Inbox.MAIL_TYPE.SALE.AUCTION then
 		local itemName, buyer, bid, _, _, ahcut, _, _, quantity = Inbox.GetInvoiceInfo(index)
 		buyer = buyer or AUCTION_HOUSE_MAIL_MULTIPLE_BUYERS
 		local itemLink = "["..tostring(itemName).."]"
-		if not quantity then
+		-- 3.3.5a: 0 is truthy in Lua, so a 0 count (invoice mail has no attachment) slipped past the old
+		-- 'if not quantity' check and the log showed 'Sold/Bought ... x0'. Treat 0 as missing.
+		if not quantity or quantity == 0 then
 			local _, _, attachQty = private.GetMailItemInfo(index)
-			quantity = attachQty or 1
+			quantity = (attachQty and attachQty > 0) and attachQty or 1
 		end
 		return format(L["Sold %sx%d for %s to %s"], itemLink, quantity, private.FormatMoney((bid or 0) - (ahcut or 0), "FEEDBACK_GREEN"), buyer)
 	elseif mailType == Inbox.MAIL_TYPE.BUY.CRAFTING_ORDER then

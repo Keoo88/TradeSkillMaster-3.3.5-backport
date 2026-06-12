@@ -169,9 +169,13 @@ function private.RecordMail(index, subIndex, resolveNames)
 		if not private.CanLootMailIndex(index, bid - ahcut) then
 			return false
 		end
-		-- 3.3.5: GetInboxInvoiceInfo не возвращает count — берём из attachment.
-		if not quantity then
-			quantity = private.GetQuantity(index, 1) or 1
+		-- 3.3.5a: 0 is truthy in Lua, so a 0 count (invoice has no attachment) slipped through the old
+		-- 'if not quantity' check and recorded sales/buys as x0 (breaking TOP SALE and bid/quantity).
+		if not quantity or quantity == 0 then
+			quantity = private.GetQuantity(index, 1)
+			if not quantity or quantity == 0 then
+				quantity = 1
+			end
 		end
 		local itemString = ItemInfo.ItemNameToItemString(itemName)
 		if not itemString or itemString == ItemString.GetUnknown() then
@@ -186,9 +190,13 @@ function private.RecordMail(index, subIndex, resolveNames)
 		end
 	elseif mailType == Inbox.MAIL_TYPE.BUY.AUCTION then
 		local _, buyer, bid, _, _, _, _, _, quantity = Inbox.GetInvoiceInfo(index)
-		-- 3.3.5: GetInboxInvoiceInfo не возвращает count — берём из attachment.
-		if not quantity then
-			quantity = private.GetQuantity(index, 1) or 1
+		-- 3.3.5a: 0 is truthy in Lua, so a 0 count (invoice has no attachment) slipped through the old
+		-- 'if not quantity' check and recorded sales/buys as x0 (breaking TOP SALE and bid/quantity).
+		if not quantity or quantity == 0 then
+			quantity = private.GetQuantity(index, 1)
+			if not quantity or quantity == 0 then
+				quantity = 1
+			end
 		end
 		buyer = buyer or AUCTION_HOUSE_MAIL_MULTIPLE_SELLERS or ""
 		if buyer == "" and not resolveNames then
