@@ -163,16 +163,20 @@ function List:Draw()
 		end
 	end
 	if frameH > 0 then
+		-- The vertical viewport may be anchored below a header (see ScrollTable), so its height must
+		-- exclude that top offset; otherwise its bottom (and clip mask) extends past the list bounds
+		-- and the last row spills over the frame edge on 3.3.5a. Default offset is 0 for plain lists.
+		local vFrameH = max(0, frameH - self:_GetVScrollTopOffset())
 		self._hScrollFrame:SetHeight(frameH)
 		self._hContent:SetHeight(frameH)
-		self._vScrollFrame:SetHeight(frameH)
-		self._content:SetHeight(frameH)
+		self._vScrollFrame:SetHeight(vFrameH)
+		self._content:SetHeight(vFrameH)
 		-- In 3.3.5 SetClipsChildren creates internal _ClipsChildren frame that needs explicit sizing
 		if self._hScrollFrame._ClipsChildren then
 			self._hScrollFrame._ClipsChildren:SetHeight(frameH)
 		end
 		if self._vScrollFrame._ClipsChildren then
-			self._vScrollFrame._ClipsChildren:SetHeight(frameH)
+			self._vScrollFrame._ClipsChildren:SetHeight(vFrameH)
 		end
 	end
 
@@ -405,7 +409,7 @@ function List.__protected:_DrawVFrames()
 	self._hContent:SetHeight(frameHeight)
 	if frameHeight > 0 then
 		self._hScrollFrame:SetHeight(frameHeight)
-		self._vScrollFrame:SetHeight(frameHeight)
+		self._vScrollFrame:SetHeight(max(0, frameHeight - self:_GetVScrollTopOffset()))
 	end
 
 	local rowHeight = self._rowHeight
@@ -513,6 +517,13 @@ end
 
 function List.__protected:_GetMaxHScroll()
 	return max(self._hContent:GetWidth() - self._hScrollFrame:GetWidth(), 0)
+end
+
+-- Vertical offset (in px) of the scroll viewport's top from the list's top edge. Subclasses that
+-- anchor the viewport below a header (e.g. ScrollTable) override this so the viewport/clip height
+-- excludes the header; the default of 0 leaves plain lists unchanged.
+function List.__protected:_GetVScrollTopOffset()
+	return 0
 end
 
 function List.__private:_GetMaxVisibleRows()

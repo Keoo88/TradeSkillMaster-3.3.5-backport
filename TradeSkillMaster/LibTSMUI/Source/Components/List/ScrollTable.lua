@@ -389,6 +389,14 @@ function ScrollTable.__protected:_DrawSortFlag()
 	end
 end
 
+function ScrollTable.__protected:_GetVScrollTopOffset()
+	-- The vertical scroll viewport is anchored below the column header (see __init: vScrollFrame
+	-- TOPLEFT -> lineBottom BOTTOMLEFT), matching the scrollbar's own offset. Tell the base List how
+	-- much of the height is taken by the header so the viewport/clip height excludes it; otherwise on
+	-- 3.3.5a the bottom row spills past the list edge (e.g. onto the Auctioning Post/Skip bar).
+	return HEADER_HEIGHT + HEADER_LINE_HEIGHT * 2
+end
+
 function ScrollTable.__protected:_DrawHeader()
 	local colSpacing = Theme.GetColSpacing()
 	local prevCellButton = self._header.moreButton
