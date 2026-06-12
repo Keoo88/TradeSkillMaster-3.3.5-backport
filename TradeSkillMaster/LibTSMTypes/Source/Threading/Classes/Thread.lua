@@ -437,7 +437,15 @@ function Thread.__private:_Main(...)
 end
 
 function Thread.__private:_Exit()
-	assert(self:IsAlive())
+	-- 3.3.5a: the Destroying flow can re-enter _Exit on an already-finished thread.
+	-- When the final destroy refreshes the bags (RescanAllBags/UpdateBagDB) from inside
+	-- the running destroy thread, the now-empty list hides the Destroying frame, whose
+	-- future OnCleanup calls Threading.Kill on this very thread. The thread then ends up
+	-- exiting twice, so treat exiting an already-dead thread as a harmless no-op instead
+	-- of asserting.
+	if not self:IsAlive() then
+		return
+	end
 	self._state = STATE.DEAD
 	self:_Cleanup()
 	if self._startTime then

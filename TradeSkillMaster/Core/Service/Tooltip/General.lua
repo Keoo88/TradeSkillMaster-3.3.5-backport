@@ -187,7 +187,13 @@ function private.PopulateFullDestroyLines(tooltip, itemString)
 		for targetItemString in Conversion.DisenchantTargetItemIterator() do
 			local amountOfMats, matRate, minAmount, maxAmount = Conversions.GetDisenchantTargetItemSourceInfo(targetItemString, classId, quality, itemLevel, expansion)
 			if amountOfMats then
-				local matValue = CustomString.GetSourceValue(private.settings.destroyValueSource, targetItemString) or 0
+				-- 3.3.5a backport: fall back to DBMarket then DBMinBuyout so the full
+				-- destroy breakdown still lists this material when the selected source
+				-- (e.g. Historical Price) has no data for it.
+				local matValue = CustomString.GetSourceValue(private.settings.destroyValueSource, targetItemString)
+					or CustomString.GetSourceValue("DBMarket", targetItemString)
+					or CustomString.GetSourceValue("DBMinBuyout", targetItemString)
+					or 0
 				if matValue > 0 then
 					tooltip:AddSubItemValueLine(targetItemString, matValue, amountOfMats, matRate, minAmount, maxAmount)
 				end
@@ -195,7 +201,11 @@ function private.PopulateFullDestroyLines(tooltip, itemString)
 		end
 	else
 		for targetItemString, amountOfMats, matRate, minAmount, maxAmount, targetQuality, sourceQuality in Conversion.TargetItemsByMethodIterator(itemString, method) do
-			local matValue = CustomString.GetSourceValue(private.settings.destroyValueSource, targetItemString) or TSM.Crafting.GetConversionsValue(targetItemString, private.settings.destroyValueSource) or 0
+			local matValue = CustomString.GetSourceValue(private.settings.destroyValueSource, targetItemString)
+				or TSM.Crafting.GetConversionsValue(targetItemString, private.settings.destroyValueSource)
+				or CustomString.GetSourceValue("DBMarket", targetItemString)
+				or CustomString.GetSourceValue("DBMinBuyout", targetItemString)
+				or 0
 			if matValue > 0 then
 				local quality = sourceQuality and TSM.Crafting.Quality.GetExpectedSalvageResult(method, sourceQuality)
 				if not targetQuality or targetQuality == quality then

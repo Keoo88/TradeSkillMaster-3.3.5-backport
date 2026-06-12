@@ -35,24 +35,16 @@ local private = {
 	altRealmSources = {},
 	altRealmSourceKeys = {},
 }
-local INVALID_DESTROY_PRICE_SOURCES = {
-	crafting = true,
-	vendorbuy = true,
-	vendorsell = true,
-	destroy = true,
-	itemquality = true,
-	itemlevel = true,
-	requiredlevel = true,
-	numinventory = true,
-	numexpires = true,
-	salerate = true,
-	dbregionsalerate = true,
-	dbregionsoldperday = true,
-	auctioningopmin = true,
-	auctioningopmax = true,
-	auctioningopnormal = true,
-	shoppingopmax = true,
-	sniperopmax = true,
+-- 3.3.5a backport: the Destroy value source dropdown uses an allowlist instead of a
+-- blocklist. Only these local AuctionDB price sources have working data on private
+-- servers. Everything else registered as a "source" (region/global feeds, Accounting
+-- averages like Avg Sell / Smart Avg Buy, and non-price item attributes like Maximum
+-- Stack Size / item quality / operation min-max) either returns nil or isn't a price,
+-- which silently blanks the destroy tooltip line, so it's hidden from the dropdown.
+local VALID_DESTROY_PRICE_SOURCES = {
+	dbmarket = true,
+	dbminbuyout = true,
+	dbhistorical = true,
 }
 local CHARACTER_SEP = "\001"
 local SETTING_TOOLTIPS = {
@@ -140,7 +132,7 @@ function private.GetGeneralSettingsFrame()
 	local foundCurrentSetting = false
 	for _, key, label in CustomString.SourceIterator() do
 		key = strlower(key)
-		if not INVALID_DESTROY_PRICE_SOURCES[key] then
+		if VALID_DESTROY_PRICE_SOURCES[key] then
 			tinsert(private.destroySources, label)
 			tinsert(private.destroySourceKeys, key)
 			if private.settings.destroyValueSource == key then

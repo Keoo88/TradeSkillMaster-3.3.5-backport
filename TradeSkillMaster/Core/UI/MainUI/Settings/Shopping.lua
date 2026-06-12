@@ -15,6 +15,7 @@ local UIManager = TSM.LibTSMUtil:IncludeClassType("UIManager")
 local private = {
 	manager = nil, ---@type UIManager
 	settings = nil,
+	levelRange = nil, ---@type RangeInput
 }
 local SETTING_TOOLTIPS = {
 	searchAutoFocus = L["When enabled, the search input in the Browse tab of the AH will automatically be focused to allow for quickly searching the AH."],
@@ -120,8 +121,8 @@ function private.GetShoppingSettingsFrame(state)
 			)
 			:AddChild(UIElements.New("RangeInput", "levelRange")
 				:SetHeight(24)
-				:SetRange("0,"..Item.GetMaxItemLevel())
-				:SetValue(private.settings.minDeSearchLvl..","..private.settings.maxDeSearchLvl)
+				:SetRange("0,284") -- WotLK 3.3.5a max item level (Shadowmourne / Heroic ICC25); was Item.GetMaxItemLevel() = retail 700
+				:SetValue(min(max(private.settings.minDeSearchLvl, 0), 284)..","..min(max(private.settings.maxDeSearchLvl, 0), 284)) -- clamp saved value into the slider range so an old >284 maxDeSearchLvl doesn't assert in RangeInput:SetValue
 				:SetAction("OnValueChanged", "ACTION_UPDATE_DE_LEVEL_RANGE")
 				:SetTooltip(SETTING_TOOLTIPS.deSearchLevelRange)
 			)
@@ -175,6 +176,10 @@ function private.GetShoppingSettingsFrame(state)
 	alertFrame:GetElement("content.resetButton")
 		:SetDisabledPublisher(state:PublisherForKeyChange("buyoutConfirmationAlertEnabled"):InvertBoolean())
 
+	-- Cache the level-range element so the action handler can read its value directly
+	-- without relying on state.frame (which can be nil during dragging on 3.3.5a)
+	private.levelRange = frame:GetElement("disenchant.content.levelRange")
+
 	private.manager:ProcessAction("ACTION_HANDLE_FRAME_SHOWN", frame)
 	return frame
 end
@@ -195,10 +200,19 @@ function private.ActionHandler(manager, state, action, ...)
 	elseif action == "ACTION_HANDLE_FRAME_HIDDEN" then
 		state.frame = nil
 	elseif action == "ACTION_UPDATE_DE_LEVEL_RANGE" then
-		local minLevel, maxLevel = strsplit(",", state.frame:GetElement("disenchant.content.levelRange"):GetValue())
+		-- Read from the cached RangeInput element instead of state.frame: on 3.3.5a, navigating
+		-- onto this page fires ACTION_HANDLE_FRAME_SHOWN and then ACTION_HANDLE_FRAME_HIDDEN on the
+		-- same pooled frame, leaving state.frame nil even though the slider is still visible/draggable
+		local levelRange = private.levelRange
+		if not levelRange then
+			return
+		end
+		local minLevel, maxLevel = strsplit(",", levelRange:GetValue())
 		minLevel = tonumber(minLevel)
 		maxLevel = tonumber(maxLevel)
-		assert(minLevel and maxLevel)
+		if not (minLevel and maxLevel) then
+			return
+		end
 		private.settings.minDeSearchLvl = minLevel
 		private.settings.maxDeSearchLvl = maxLevel
 	else

@@ -297,81 +297,158 @@ end
 -- Destroy Thread
 -- ============================================================================
 
+---Finds the slotId of a bag slot that currently holds the given item, preferring
+---one whose stack is at least minQuantity. Used to recover from a stale scroll
+---table selection so the destroy macro always targets a slot that really has the
+---item (otherwise a follow-up click can point at a just-emptied slot).
+function private.FindBagSlotId(itemString, minQuantity)
+	local fallbackSlotId = nil
+	for slotId in Container.GetBagSlotIterator() do
+		local bag, slot = SlotId.Split(slotId)
+		local link = Container.GetItemLink(bag, slot)
+		if link and ItemString.Get(link) == itemString then
+			local stackCount = Container.GetStackCount(bag, slot) or 0
+			if not minQuantity or stackCount >= minQuantity then
+				return slotId
+			end
+			fallbackSlotId = fallbackSlotId or slotId
+		end
+	end
+	return fallbackSlotId
+end
+
+---Finds the next destroyable item currently in the bags (one whose stack is at
+---least its minQuantity). Used as a fallback when the scroll table's selection is
+---stale and the originally selected item is gone entirely, so the "Destroy Next"
+---button keeps working on rapid consecutive clicks. Returns the item, its slotId,
+---spellId and minQuantity, or nil if nothing destroyable remains.
+function private.FindNextDestroyable()
+	for slotId in Container.GetBagSlotIterator() do
+		local bag, slot = SlotId.Split(slotId)
+		local link = Container.GetItemLink(bag, slot)
+		local itemString = link and ItemString.Get(link)
+		if itemString then
+			local spellId = private.destroyInfoDB:GetUniqueRowField("itemString", itemString, "spellId")
+			local minQuantity = private.destroyInfoDB:GetUniqueRowField("itemString", itemString, "minQuantity")
+			if spellId and minQuantity and (Container.GetStackCount(bag, slot) or 0) >= minQuantity then
+				return itemString, slotId, spellId, minQuantity
+			end
+		end
+	end
+	return nil
+end
+
 function private.DestroyThread(button, itemString, slotId)
 	-- We get sent a sync message so we run right away
 	assert(Threading.ReceiveMessage() == START_MESSAGE)
 
 	local bag, slot = SlotId.Split(slotId)
 	local spellId = private.destroyInfoDB:GetUniqueRowField("itemString", itemString, "spellId")
+	local minQuantity = private.destroyInfoDB:GetUniqueRowField("itemString", itemString, "minQuantity")
+	-- The slotId comes from the scroll table's current selection, which is very
+	-- often stale on a follow-up click: the previous destroy just emptied this slot
+	-- and neither the bag DB nor the scroll selection has refreshed yet, so we are
+	-- handed the item we just destroyed (an empty slot). Building the macro against
+	-- that empty slot casts on nothing and spins the button until the 10s timeout.
+	-- First try to re-resolve a slot that still holds this exact item; if the item
+	-- is gone entirely, fall back to the next destroyable item in the bags so the
+	-- "Destroy Next" button keeps chewing through items on rapid consecutive clicks.
+	local existingLink = Container.GetItemLink(bag, slot)
+	if not existingLink or ItemString.Get(existingLink) ~= itemString then
+		local resolvedSlotId = private.FindBagSlotId(itemString, minQuantity)
+		if resolvedSlotId then
+			slotId = resolvedSlotId
+			bag, slot = SlotId.Split(slotId)
+		else
+			local nextItem, nextSlotId, nextSpellId, nextMinQuantity = private.FindNextDestroyable()
+			if not nextItem then
+				-- Nothing to destroy. We must NOT return synchronously here: StartDestroy
+				-- runs this thread via SendSyncMessage, so finishing the future right now
+				-- (before the UI's action handler calls ManageFuture) trips an assert in
+				-- Future:SetScript("OnDone") on an already-done future. Force a yield so the
+				-- future is still in the STARTED state when ManageFuture runs, then bail.
+				Threading.Yield(true)
+				return false
+			end
+			itemString = nextItem
+			slotId = nextSlotId
+			spellId = nextSpellId
+			minQuantity = nextMinQuantity
+			bag, slot = SlotId.Split(slotId)
+		end
+	end
 	local startQuantity = Container.GetStackCount(bag, slot)
 	button:SetMacroText(format("/cast %s;\n/use %d %d", Spell.GetInfo(spellId), bag, slot))
 
-	-- Wait for the spell cast to start or fail
+	-- Wait for the destroy to complete. On retail a loot window opens with the
+	-- results, but on 3.3.5a milling, prospecting and disenchanting deposit the mats
+	-- straight into the bags with NO loot window, and the UNIT_SPELLCAST_START
+	-- message is not reliably delivered to this thread. The original code blocked on
+	-- ReceiveMessage() waiting for UNIT_SPELLCAST_START (and later for loot events),
+	-- which never arrives here, leaving the Destroy button stuck on "Destroying..."
+	-- forever. Instead we never block on a message: we poll, treating the destroyed
+	-- item being removed from its slot as the authoritative "done" signal, while
+	-- still draining spell/loot messages to capture loot results and to notice a
+	-- genuinely failed cast.
 	private.pendingSpellId = spellId
-	local event = Threading.ReceiveMessage()
-	if event ~= "UNIT_SPELLCAST_START" then
-		-- The spell cast failed for some reason
-		ClearCursor()
-		return false
-	end
-
-	-- Discard any other messages
-	Threading.Yield(true)
-	while Threading.HasPendingMessage() do
-		Threading.ReceiveMessage()
-	end
-
-	-- Wait for the spell cast to finish and the loot window to open and then close
 	local lootResult = nil
-	local hasSpellcastSucceeded, hasLootClosed, hasBagUpdateDelayed = false, false, false
-	while not hasSpellcastSucceeded or not lootResult or not hasLootClosed or not hasBagUpdateDelayed do
-		event = Threading.ReceiveMessage()
-		Log.Info("Got event: %s", tostring(event))
-		if event == "UNIT_SPELLCAST_SUCCEEDED" then
-			hasSpellcastSucceeded = true
-		elseif event == "LOOT_READY" then
-			if not lootResult and GetNumLootItems() > 0 then
-				lootResult = {}
-				for i = 1, GetNumLootItems() do
-					local lootItemString = ItemString.Get(GetLootSlotLink(i))
-					local _, _, quantity = GetLootSlotInfo(i)
-					if lootItemString and (quantity or 0) > 0 then
-						lootItemString = GEM_CHIPS[lootItemString] or lootItemString
-						lootResult[lootItemString] = quantity
+	local timeout = GetTime() + 10
+	while true do
+		local castFailed = false
+		while Threading.HasPendingMessage() do
+			local event = Threading.ReceiveMessage()
+			if event == "LOOT_READY" then
+				if not lootResult and GetNumLootItems() > 0 then
+					lootResult = {}
+					for i = 1, GetNumLootItems() do
+						local lootItemString = ItemString.Get(GetLootSlotLink(i))
+						local _, _, quantity = GetLootSlotInfo(i)
+						if lootItemString and (quantity or 0) > 0 then
+							lootItemString = GEM_CHIPS[lootItemString] or lootItemString
+							lootResult[lootItemString] = quantity
+						end
 					end
 				end
+			elseif event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_INTERRUPTED" then
+				castFailed = true
+			else
+				-- UNIT_SPELLCAST_START / UNIT_SPELLCAST_SUCCEEDED / LOOT_CLOSED /
+				-- BAG_UPDATE_DELAYED are expected progress events; the bag-quantity
+				-- check below confirms actual completion.
 			end
-		elseif event == "LOOT_CLOSED" then
-			if lootResult then
-				hasLootClosed = true
-			end
-		elseif event == "BAG_UPDATE_DELAYED" then
-			if lootResult then
-				hasBagUpdateDelayed = true
-			end
-		else
-			-- The spell cast was interrupted
+		end
+		-- The destroyed item being consumed from its slot is the authoritative
+		-- completion signal (works even when no loot window / events fire on 3.3.5a)
+		-- and always wins over a stray failure message.
+		if startQuantity ~= Container.GetStackCount(bag, slot) then
+			break
+		end
+		if castFailed then
+			ClearCursor()
 			return false
 		end
-	end
-
-	-- Add to the log
-	local newEntry = {
-		item = itemString,
-		time = time(),
-		result = lootResult,
-	}
-	private.settings.destroyingHistory[spellId] = private.settings.destroyingHistory[spellId] or {}
-	tinsert(private.settings.destroyingHistory[spellId], newEntry)
-
-	-- Wait up to a second for the item we destroyed to be removed from the bags
-	local timeout = GetTime() + 1
-	while startQuantity == Container.GetStackCount(bag, slot) do
 		if GetTime() > timeout then
 			return false
 		end
 		Threading.Sleep(0.1)
 	end
+
+	-- The item has been consumed. We intentionally do NOT refresh the bags here. The
+	-- rescan empties the destroying list, which synchronously hides the Destroying frame,
+	-- whose OnHide cancels the destroy future and calls Threading.Kill on THIS thread.
+	-- Doing that while we're still the running coroutine makes Kill -> _Exit ->
+	-- coroutine.yield blow up with "attempt to yield across metamethod/C-call boundary"
+	-- (frame:Hide is a C-call boundary). The rescan is instead done in DestroyThreadDone,
+	-- which runs after the thread has fully exited and is dead, so the Kill is a no-op.
+
+	-- Add to the log
+	local newEntry = {
+		item = itemString,
+		time = time(),
+		result = lootResult or {},
+	}
+	private.settings.destroyingHistory[spellId] = private.settings.destroyingHistory[spellId] or {}
+	tinsert(private.settings.destroyingHistory[spellId], newEntry)
 
 	-- We're done
 	return true
@@ -412,6 +489,15 @@ end
 function private.DestroyThreadDone(result)
 	private.destroyThreadRunning = false
 	private.destroyFuture:Done(result)
+	-- Refresh the bags AFTER the thread has fully exited (we're back in normal stack
+	-- context now, not inside the thread's coroutine). On 3.3.5a the BAG_UPDATE event for
+	-- non-backpack bags is unreliable, so we must rescan ourselves or the destroying list
+	-- won't drop the consumed item. This must happen here rather than inside the thread:
+	-- emptying the list hides the Destroying frame, whose OnHide cancels the destroy future
+	-- and calls Threading.Kill on the destroy thread. By now the thread is already dead, so
+	-- that Kill is a harmless no-op instead of a yield-across-C-call-boundary crash.
+	BagTracking.RescanAllBags()
+	private.UpdateBagDB()
 end
 
 function private.TradeSkillCraftResultHandler(event, resultTable)

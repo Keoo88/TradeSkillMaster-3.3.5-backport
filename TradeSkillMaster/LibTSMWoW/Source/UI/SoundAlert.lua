@@ -61,10 +61,14 @@ function SoundAlert.Play(soundKey)
 		-- do nothing
 	elseif CUSTOM_KEYS[soundKey] then
 		PlaySoundFile(CUSTOM_KEYS[soundKey], "Master")
-		FlashClientIcon()
+		if FlashClientIcon then
+			FlashClientIcon()
+		end
 	elseif KIT_IDS[soundKey] then
 		PlaySound(KIT_IDS[soundKey], "Master")
-		FlashClientIcon()
+		if FlashClientIcon then
+			FlashClientIcon()
+		end
 	else
 		error("Invalid sound key: "..tostring(soundKey))
 	end

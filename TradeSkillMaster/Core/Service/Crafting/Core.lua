@@ -753,7 +753,13 @@ function Crafting.GetConversionsValue(itemString, customPrice, method)
 			for targetItemString in Conversion.DisenchantTargetItemIterator() do
 				local amountOfMats = Conversions.GetDisenchantTargetItemSourceInfo(targetItemString, classId, quality, itemLevel, expansion)
 				if amountOfMats then
+					-- 3.3.5a backport: the selected destroy value source may have no data for
+					-- this mat (e.g. Historical Price before scans exist). Fall back to raw
+					-- DBMarket then DBMinBuyout so the destroy tooltip still shows a value
+					-- instead of disappearing entirely.
 					local matValue = CustomString.GetValue(customPrice, targetItemString)
+						or CustomString.GetSourceValue("DBMarket", targetItemString)
+						or CustomString.GetSourceValue("DBMinBuyout", targetItemString)
 					if not matValue or matValue == 0 then
 						return
 					end
