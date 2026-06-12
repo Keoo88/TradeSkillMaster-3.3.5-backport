@@ -706,19 +706,37 @@ function AuctionHouseWrapper.GetDepositCost(bag, slot, stackSize, postTime, bid,
 			error("Invalid commodity status")
 		end
 	else
-		-- Classic API: place item in AH slot, then call CalculateAuctionDeposit
+		-- Classic API: place item in AH slot, then call CalculateAuctionDeposit.
+		-- 3.3.5a: the sell slot only accepts an item when the default Auctions tab has been
+		-- shown/initialized. TSM keeps the Blizzard AuctionFrame hidden, so without activating the
+		-- tab first ClickAuctionSellItemButton silently fails and GetAuctionSellItemInfo stays nil,
+		-- making this return the 0 fallback (deposit shown as 0). Same fix as PostAuction below.
+		local auctionFrameWasShown = AuctionFrame and AuctionFrame:IsShown()
+		if AuctionFrame and not auctionFrameWasShown then
+			AuctionFrame:Show()
+		end
+		if _G["AuctionFrameTab3"] and AuctionFrameTab_OnClick then
+			AuctionFrameTab_OnClick(_G["AuctionFrameTab3"])
+		end
 		ClearCursor()
 		Container.PickupItem(bag, slot)
-		ClickAuctionSellItemButton(AuctionsItemButton, "LeftButton")
+		if CursorHasItem() then
+			ClickAuctionSellItemButton(AuctionsItemButton, "LeftButton")
+		end
 		ClearCursor()
 		-- WotLK 3.3.5: CalculateAuctionDeposit(duration) returns deposit for item in AH slot
-		-- Check if item is in slot before calculating deposit
 		local name = GetAuctionSellItemInfo()
-		if not name then
-			-- Item not in slot yet, return 0 as fallback
-			return 0
+		local depositCost = 0
+		if name then
+			depositCost = CalculateAuctionDeposit(postTime) or 0
 		end
-		local depositCost = CalculateAuctionDeposit(postTime) or 0
+		if AuctionFrame and not auctionFrameWasShown then
+			-- Restore the hidden state without ending the AH session (CloseAuctionHouse would stop NPC interaction)
+			local origCloseAuctionHouse = CloseAuctionHouse
+			CloseAuctionHouse = function() end
+			AuctionFrame_Hide()
+			CloseAuctionHouse = origCloseAuctionHouse
+		end
 		return depositCost
 	end
 end
