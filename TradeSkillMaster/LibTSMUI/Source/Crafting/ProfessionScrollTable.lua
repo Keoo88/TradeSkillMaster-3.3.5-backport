@@ -555,17 +555,10 @@ end
 function ProfessionScrollTable.__protected:_LoadDeferredRowData(dataIndex)
 	local data = self._rawData[dataIndex]
 	-- TODO: Support optional materials here
-	local num, numAll = self._craftableQuantityFunc(data)
-	local qty = nil
-	if num == numAll then
-		qty = num > 0 and Theme.GetColor("FEEDBACK_GREEN"):ColorText(num) or num
-	elseif num > 0 then
-		qty = Theme.GetColor("FEEDBACK_GREEN"):ColorText(num.."-"..numAll)
-	elseif numAll > 0 then
-		qty = Theme.GetColor("FEEDBACK_YELLOW"):ColorText(num.."-"..numAll)
-	else
-		qty = num.."-"..numAll
-	end
+	-- 3.3.5 backport: show only craftable count from the player bags (num),
+	-- not the num-numAll range that includes alts/guild bank inventory.
+	local num = self._craftableQuantityFunc(data)
+	local qty = num > 0 and Theme.GetColor("FEEDBACK_GREEN"):ColorText(num) or num
 	self._data.qty[dataIndex] = qty
 	local craftingCost, itemValue, profit, saleRate = self._costsFunc(data)
 	self._data.craftingCost[dataIndex] = craftingCost and Money.ToStringForUI(craftingCost, nil) or ""

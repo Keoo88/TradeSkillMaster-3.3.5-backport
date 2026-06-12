@@ -791,7 +791,11 @@ function private.GetItemStringAndCraftName(craftString)
 		end
 		craftName = ItemInfo.GetName(itemString)
 	elseif strfind(resultItem, "enchant:") then
-		itemString = ""
+		local scrollResult = Data.GetIndirectCraftResult(indirectSpellId or spellId)
+		if type(scrollResult) == "table" then
+			scrollResult = scrollResult[1]
+		end
+		itemString = scrollResult and ItemString.Get(scrollResult) or ""
 		craftName = TradeSkill.GetBasicInfo(TradeSkill.IsClassicCrafting() and Scanner.GetClassicSpellId(spellId) or (indirectSpellId or spellId))
 	elseif strfind(resultItem, "item:") then
 		-- Result of craft is item
@@ -854,7 +858,7 @@ function private.BulkInsertMats(craftString)
 		end
 	end
 
-	if LibTSMService.IsPandaClassic() and TradeSkill.IsEnchant(spellIdOrIndex) then
+	if (LibTSMService.IsPandaClassic() or LibTSMService.IsWrathClassic()) and TradeSkill.IsEnchant(spellIdOrIndex) then
 		-- Add a vellum to the list of mats
 		local vellumItemString = Scanner.GetVellumItemString(craftString)
 		if vellumItemString then
