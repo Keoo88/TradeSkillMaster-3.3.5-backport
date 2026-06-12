@@ -194,6 +194,13 @@ function MoneyFormatter:ToString(value)
 	if not value then
 		return nil
 	end
+	-- 3.3.5a: guard against inf/nan reaching the formatter. tonumber() lets them through, and the
+	-- MSVC Lua runtime renders floor(inf) as the unreadable "1.#INF" / "-1.#IND" (seen as TOP SALE
+	-- showing "1.#,INFg"). These only arise from bad math upstream (e.g. a divide-by-zero average),
+	-- so clamp to 0 here as a last-resort boundary so no money string ever shows the C garbage value.
+	if value ~= value or value == math.huge or value == -math.huge then
+		value = 0
+	end
 	assert(#self._partsTemp == 0)
 
 	-- Shortcut for zero

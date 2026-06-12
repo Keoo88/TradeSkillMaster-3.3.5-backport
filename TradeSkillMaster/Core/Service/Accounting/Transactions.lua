@@ -388,6 +388,12 @@ function Transactions.GetAveragePrice(itemString, timeFilter, typeFilter)
 		avgPrice = avgPrice + price * quantity
 		totalQuantity = totalQuantity + quantity
 	end
+	-- 3.3.5a: guard divide-by-zero. With no matching records totalQuantity is 0, and 0/0 = nan
+	-- (rendered as the unreadable "1.#IND"/"1.#INF" by the MSVC Lua runtime, e.g. in the Dashboard
+	-- TOP SALE field). Return nil like the other average-price helpers when there's nothing to average.
+	if totalQuantity == 0 then
+		return nil
+	end
 	return Math.Round(avgPrice / totalQuantity)
 end
 
