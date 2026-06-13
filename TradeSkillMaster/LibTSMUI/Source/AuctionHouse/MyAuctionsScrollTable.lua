@@ -40,6 +40,7 @@ local COL_INFO = {
 		title = HIGH_BIDDER,
 		justifyH = "LEFT",
 		font = "BODY_BODY3",
+		sortField = "highBidder",
 	} or nil,
 	group = {
 		title = GROUP,
@@ -360,7 +361,19 @@ function MyAuctionsScrollTable.__private:_GetSortField()
 	if self._sortDisabled then
 		return "index"
 	end
-	local field = COL_INFO[self:_GetSettingsValue().sortCol].sortField
+	local settingsValue = self:_GetSettingsValue()
+	local colInfo = settingsValue.sortCol and COL_INFO[settingsValue.sortCol] or nil
+	if not colInfo or not colInfo.sortField then
+		-- 3.3.5a: sorting used to be disabled on classic, so the saved/default setting may have no
+		-- (or a now-invalid) sortCol. Fall back to a column that always exists and persist it so the
+		-- settings validate on the next load instead of crashing or resetting every time.
+		settingsValue.sortCol = "item"
+		if type(settingsValue.sortAscending) ~= "boolean" then
+			settingsValue.sortAscending = true
+		end
+		colInfo = COL_INFO[settingsValue.sortCol]
+	end
+	local field = colInfo.sortField
 	assert(field)
 	return field
 end
