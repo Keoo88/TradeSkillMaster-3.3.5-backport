@@ -116,8 +116,19 @@ function AuctionPostContext:CanPost()
 	if not self._itemString then
 		return false
 	end
-	local numBags = BagTracking.CreateQueryBagsItemAuctionable(ItemString.GetBaseFast(self._itemString))
+	local baseItemString = ItemString.GetBaseFast(self._itemString)
+	local numBags = BagTracking.CreateQueryBagsItemAuctionable(baseItemString)
 		:SumAndRelease("quantity")
+	if numBags == 0 then
+		-- 3.3.5: the login-time BAG_UPDATE events for non-backpack bags are
+		-- unreliable, so the slotDB can be empty / stale even when the item is
+		-- actually in the bags. That wrongly counted 0 here and left the
+		-- Browse/Shopping Post button disabled for an item the player owns.
+		-- Force a synchronous rescan of all bags and re-check before giving up.
+		BagTracking.RescanAllBags()
+		numBags = BagTracking.CreateQueryBagsItemAuctionable(baseItemString)
+			:SumAndRelease("quantity")
+	end
 	return numBags > 0
 end
 

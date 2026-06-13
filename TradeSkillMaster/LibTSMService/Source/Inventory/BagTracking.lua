@@ -234,9 +234,19 @@ end
 ---@param itemString string The item string
 ---@return DatabaseQuery
 function BagTracking.CreateQueryBagsItemAuctionable(itemString)
-	return BagTracking.CreateQueryBagsItem(itemString)
-		:Equal("isBound", false)
-		:Custom(private.IsAuctionableQueryFilter)
+	-- 3.3.5: the native container API has no reliable bound flag, so the slotDB
+	-- "isBound" field is unreliable here (it ends up true for many perfectly
+	-- auctionable non-white items, e.g. BoE armor). Applying it unconditionally
+	-- made CanPost count 0 of an item that is actually in the bags, which left the
+	-- Shopping/Browse Post button disabled even though the item was sellable.
+	-- Mirror CreateQueryBagsAuctionable: only filter isBound on clients that report
+	-- it; on 3.3.5 the tooltip-based IsAuctionableQueryFilter still excludes truly
+	-- bound items.
+	local query = BagTracking.CreateQueryBagsItem(itemString)
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Equal("isBound", false)
+	end
+	return query:Custom(private.IsAuctionableQueryFilter)
 end
 
 ---Gets the mailable quantity for the specified item from the bags.
