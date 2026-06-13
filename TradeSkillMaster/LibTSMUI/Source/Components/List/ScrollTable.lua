@@ -42,6 +42,21 @@ local EXTRA_SOURCE_TEXT_INFO = {
 	font = "TABLE_TABLE1",
 }
 local EXTRA_SOURCE_DEFAULT_WIDTH = 100
+-- 3.3.5a: these AuctionDB price/value sources come from the TSM Desktop App's
+-- region data (region stats + sale rate / expires), which never exists on this
+-- server, so they always evaluate to nil. Hide them from the
+-- "Add Price / Value Source Column" menu so only sources with real data show.
+local DISABLED_PRICE_SOURCES = {
+	salerate = true,
+	numexpires = true,
+	dbrecent = true,
+	dbhistorical = true,
+	dbregionmarketavg = true,
+	dbregionhistorical = true,
+	dbregionsaleavg = true,
+	dbregionsalerate = true,
+	dbregionsoldperday = true,
+}
 
 
 
@@ -809,7 +824,7 @@ function ScrollTable.__protected:_PopulateMoreDialog(menuDialog)
 		for _, name in CustomString.SourceIterator() do
 			local sourceKey = strlower(name)
 			if not private.existingSourcesTemp[sourceKey] then
-				menuDialog:AddRow(PRICE_SOURCE_ID_PREFIX..sourceKey, "PRICE_SOURCES", name)
+				if not DISABLED_PRICE_SOURCES[sourceKey] then menuDialog:AddRow(PRICE_SOURCE_ID_PREFIX..sourceKey, "PRICE_SOURCES", name) end
 			end
 		end
 		local addedCustomSources = false
