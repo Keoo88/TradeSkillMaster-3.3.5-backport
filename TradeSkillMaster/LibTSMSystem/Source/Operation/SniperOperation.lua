@@ -23,7 +23,7 @@ function SniperOperation.Load(localizedName)
 	local operationType = Operation.NewType(OPERATION_TYPE, localizedName, 1)
 		-- 3.3.5a: no region data, so the default uses DBMarket instead of DBRegionMarketAvg
 		-- (which would always be nil and leave Sniper non-functional out of the box).
-		:AddCustomStringSetting("belowPrice", "max(vendorsell, ifgt(DBMarket, 250000g, 0.8, ifgt(DBMarket, 100000g, 0.7, ifgt(DBMarket, 50000g, 0.6, ifgt(DBMarket, 25000g, 0.5, ifgt(DBMarket, 10000g, 0.4, ifgt(DBMarket, 5000g, 0.3, ifgt(DBMarket, 2000g, 0.2, ifgt(DBMarket, 1000g, 0.1, 0.05)))))))) * DBMarket)")
+		:AddCustomStringSetting("belowPrice", "max(vendorsell, ifgt(DBMarket, 2000g, 0.8, ifgt(DBMarket, 500g, 0.7, ifgt(DBMarket, 100g, 0.6, ifgt(DBMarket, 25g, 0.5, ifgt(DBMarket, 5g, 0.4, 0.3))))) * DBMarket)")
 	Operation.RegisterType(operationType)
 end
 
