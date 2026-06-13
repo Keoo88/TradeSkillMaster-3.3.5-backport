@@ -141,6 +141,23 @@ function ProfessionScrollTable:SetSettings(settings, key, favorites)
 	assert(type(favorites) == "table")
 	self.__super:SetSettings(settings, key)
 	self._favoritesContextTable = favorites
+	-- 3.3.5a: the Sale Rate column needs region sale-rate data (from the TSM
+	-- desktop app) which doesn't exist on this server, so the column is always
+	-- empty. Force-hide it on load while keeping the column defined so nothing
+	-- downstream breaks.
+	local value = self:_GetSettingsValue()
+	if value and value.cols then
+		local changed = false
+		for _, col in ipairs(value.cols) do
+			if col.id == "saleRate" and not col.hidden then
+				col.hidden = true
+				changed = true
+			end
+		end
+		if changed then
+			self:_DrawHeader()
+		end
+	end
 	return self
 end
 
