@@ -712,20 +712,48 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				manager:ProcessAction("ACTION_RESUME_SCAN")
 			end
 			if state.selectedAuction:IsSubRow() then
-				-- Failed to find this auction, so remove it
-				local _, rawLink = state.selectedAuction:GetLinks()
-				state.selectedAuction:GetResultRow():RemoveSubRow(state.selectedAuction)
-				ChatMessage.PrintfUser(L["Failed to find auction for %s, so removing it from the results."], rawLink)
-				-- 3.3.5 off-page buyout fix: if the sniper was paused for this selection,
-				-- clear it and resume so the scan doesn't stay stuck on "Scan Paused".
-				if self._scanPausedForSelection then
-					self._scanPausedForSelection = false
+				-- 3.3.5 sniper fix: the find-on-demand reported "not found", but on
+				-- Warmane a per-item NAME query can be throttled or seller-resolve can
+				-- race, producing a FALSE negative for a lot that is still on the AH.
+				-- Before deleting a (possibly real) row, re-check the live native
+				-- "list" by identity and only remove it if the lot is genuinely gone.
+				local stillThere = false
+				if GetNumAuctionItems then
+					for i = 1, (GetNumAuctionItems("list") or 0) do
+						if state.selectedAuction:EqualsIndex(i, false) or state.selectedAuction:EqualsIndex(i, true) then
+							stillThere = true
+							break
+						end
+					end
+				end
+				if stillThere then
+					-- Keep the lot in the results; just drop the selection and resume
+					-- so the sniper isn't left stuck on "Finding" / "Scan Paused".
 					state.findHash = nil
 					if state.auctionScrollTable then
 						state.auctionScrollTable:SetSelectedRow(nil)
 					end
 					manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
-					manager:ProcessAction("ACTION_RESUME_SCAN")
+					if self._scanPausedForSelection then
+						self._scanPausedForSelection = false
+						manager:ProcessAction("ACTION_RESUME_SCAN")
+					end
+				else
+					-- Failed to find this auction, so remove it
+					local _, rawLink = state.selectedAuction:GetLinks()
+					state.selectedAuction:GetResultRow():RemoveSubRow(state.selectedAuction)
+					ChatMessage.PrintfUser(L["Failed to find auction for %s, so removing it from the results."], rawLink)
+					-- 3.3.5 off-page buyout fix: if the sniper was paused for this selection,
+					-- clear it and resume so the scan doesn't stay stuck on "Scan Paused".
+					if self._scanPausedForSelection then
+						self._scanPausedForSelection = false
+						state.findHash = nil
+						if state.auctionScrollTable then
+							state.auctionScrollTable:SetSelectedRow(nil)
+						end
+						manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
+						manager:ProcessAction("ACTION_RESUME_SCAN")
+					end
 				end
 			elseif state.scanIsPaused then
 				-- Clear the selection and resume the scan
@@ -1013,10 +1041,38 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		local quantity = ...
 		state.lastBuyQuantity = 0
 		state.lastBuyIndex = nil
-		local index = nil
+		local index = (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic()) and tremove(state.findResult, #state.findResult) or nil
+		if (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic()) and not index then
+			-- No index left to bid on; bail without asserting (mirror ACTION_BUY_AUCTION_CONFIRMED).
+			return manager:ProcessAction("ACTION_BID_FUTURE_DONE", false)
+		end
 		if LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic() then
-			index = tremove(state.findResult, #state.findResult)
-			assert(index)
+			-- 3.3.5 sniper bid fix: re-validate the index right before placing the bid,
+			-- exactly like ACTION_BUY_AUCTION_CONFIRMED. The native "list" can shift
+			-- between find and confirm (page reflow, async seller resolve, other clients),
+			-- so a stale index would bid on the wrong lot or be silently dropped.
+			local ok = state.selectedAuction:EqualsIndex(index, false)
+			if not ok then
+				ok = state.selectedAuction:EqualsIndex(index, true)
+			end
+			if not ok then
+				-- Re-locate by identity across the whole current list WITHOUT a new query
+				-- (keeps the server bid-throttle cleared) and bid at the new index.
+				local liveTotal = GetNumAuctionItems and GetNumAuctionItems("list") or 0
+				for i = 1, liveTotal do
+					if state.selectedAuction:EqualsIndex(i, false) or state.selectedAuction:EqualsIndex(i, true) then
+						index = i
+						ok = true
+						break
+					end
+				end
+			end
+			if not ok then
+				-- Lot is no longer on the live list. Unlike buyout we do NOT remove the row
+				-- here: a bid leaves the auction in place, so keep the item and just fail
+				-- this attempt + rescan (buttons re-enable instead of freezing).
+				return manager:ProcessAction("ACTION_BID_FUTURE_DONE", false)
+			end
 		end
 		-- Bid on the auction
 		local result, future = state.auctionScan:PrepareForBidOrBuyout(index, state.selectedAuction, false, quantity)

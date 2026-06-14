@@ -542,7 +542,17 @@ function private.HandleRequestDone(result)
 	-- 3.3.5 local DB: запись данных скана делается ТУТ, после успешного browse,
 	-- ровно один раз на скан. _UpdateData в ScrollTable дёргается на любой
 	-- render-update и для записи не годится.
-	if result and private.query and _G.TSM_AuctionDB_RecordScan then
+	-- 3.3.5 ROOT-FIX (Sniper "лот появляется и через 5 сек пропадает"):
+	-- НЕ записываем в AuctionDB результаты частичного скана. Sniper сканирует
+	-- ТОЛЬКО последнюю страницу (SetPage("LAST") + SetAccumulate) — это по
+	-- определению самые дешёвые/недооценённые лоты. Запись их в DBMarket/
+	-- DBMinBuyout каждые 5 сек занижает рыночную цену → SniperOperation.GetMaxPrice
+	-- (порог снайпа) падает → на следующем проходе лот больше не проходит порог
+	-- и ИСЧЕЗАЕТ из списка (само-отравление рынка по таймеру рескана). Полные
+	-- сканы и поиск по одному предмету (без _specifiedPage/_accumulate) пишутся
+	-- как раньше.
+	local isPartialScan = private.query and (private.query._accumulate or private.query._specifiedPage ~= nil)
+	if result and private.query and not isPartialScan and _G.TSM_AuctionDB_RecordScan then
 		local ok, err = pcall(private.RecordScanResults, private.query)
 		if not ok and _G.TSMDebugDB then
 			_G.TSMDebugDB.auctiondb_local = _G.TSMDebugDB.auctiondb_local or {}

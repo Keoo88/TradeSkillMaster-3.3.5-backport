@@ -426,17 +426,6 @@ function private.ScanThread(auctionScan)
 		end
 		Threading.Yield()
 	end
-	local tListBuilt = GetTime()
-	print(string.format("|cFFFFA500TSM DE Scan:|r phase=itemList elapsed=%.2fs total=%d included=%d notDE=%d badLevel=%d noDEValue=%d tooExpensive=%d",
-		tListBuilt - tScanStart, total, included, notDE, badLevel, noDEValue, tooExpensive))
-	if firstNoDE then
-		local val = CustomString.GetSourceValue("Destroy", firstNoDE)
-		print(string.format("|cFFFFA500TSM DE Scan:|r sample no_de_value item=%s Destroy=%s minLvl=%s maxLvl=%s maxPct=%s",
-			tostring(firstNoDE), tostring(val),
-			tostring(private.settings.minDeSearchLvl),
-			tostring(private.settings.maxDeSearchLvl),
-			tostring(private.settings.maxDeSearchPercent)))
-	end
 
 	-- run the scan: classic 3.3.5 uses one getAll query (single AH dump),
 	-- early-rejection in Scanner skips non-DE items by baseItemString.
@@ -446,7 +435,6 @@ function private.ScanThread(auctionScan)
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		auctionScan:AddItemListQueriesThreaded(private.itemList)
 	elseif private.useNativeScan then
-		print(string.format("|cFFFFA500TSM DE Scan:|r path=native (bypass AuctionScanManager, FullScan-style)"))
 		local nativeDone = false
 		private.NativeStart(private.itemList, function() nativeDone = true end)
 		-- Yield this thread until the native engine reports done.
@@ -458,30 +446,23 @@ function private.ScanThread(auctionScan)
 	else
 		local canGetAll = AuctionHouse.CanSendGetAllQuery()
 		if canGetAll then
-			print(string.format("|cFFFFA500TSM DE Scan:|r path=getAll (1 query, full AH dump)%s",
-				AuctionHouse.IsForceGetAll() and " [FORCED]" or ""))
 			auctionScan:NewQuery()
 				:SetStr("", false)
 				:SetUseGetAll(true)
 				:SetItems(private.itemList)
-				:SetTraceTimings("getAll")
 		else
-			print(string.format("|cFFFFA500TSM DE Scan:|r path=slowscan-dual (Weapon+Armor minQuality=%d)",
-				SLOWSCAN_MIN_QUALITY))
 			-- Weapon: Enum.ItemClass.Weapon=2 -> AH classIndex=1 (translated in Wrapper)
 			auctionScan:NewQuery()
 				:SetStr("", false)
 				:SetClass(Enum.ItemClass.Weapon)
 				:SetQualityRange(SLOWSCAN_MIN_QUALITY, nil)
 				:SetItems(private.itemList)
-				:SetTraceTimings("Weapon")
 			-- Armor: Enum.ItemClass.Armor=4 -> AH classIndex=2 (translated in Wrapper)
 			auctionScan:NewQuery()
 				:SetStr("", false)
 				:SetClass(Enum.ItemClass.Armor)
 				:SetQualityRange(SLOWSCAN_MIN_QUALITY, nil)
 				:SetItems(private.itemList)
-				:SetTraceTimings("Armor")
 		end
 	end
 	local queryCount = 0
@@ -490,36 +471,10 @@ function private.ScanThread(auctionScan)
 		queryCount = queryCount + 1
 	end
 	private.filterStats = { kept = 0, keptNoItem = 0, keptNoBuyout = 0, dropTooHigh = 0 }
-	local tEnqueued = GetTime()
-	print(string.format("|cFFFFA500TSM DE Scan:|r phase=enqueue elapsed=%.2fs queries=%d itemList=%d",
-		tEnqueued - tListBuilt, queryCount, #private.itemList))
 
-	local tScanQueriesStart = GetTime()
 	if not auctionScan:ScanQueriesThreaded() then
 		ChatMessage.PrintUser(L["TSM failed to scan some auctions. Please rerun the scan."])
 	end
-	local tScanQueriesEnd = GetTime()
-	print(string.format("|cFFFFA500TSM DE Scan:|r phase=scan elapsed=%.2fs",
-		tScanQueriesEnd - tScanQueriesStart))
-
-	local browseSubRows, browseItems = 0, 0
-	for _, query in auctionScan:QueryIterator() do
-		for _, row in query:BrowseResultsIterator() do
-			browseItems = browseItems + 1
-			browseSubRows = browseSubRows + row:GetNumSubRows()
-		end
-	end
-	local tWalkEnd = GetTime()
-	local s = private.filterStats
-	print(string.format("|cFFFFA500TSM DE Scan:|r phase=walk elapsed=%.2fs browse items=%d subRows=%d | filter kept=%d (noItem=%d noBuyout=%d) dropTooHigh=%d",
-		tWalkEnd - tScanQueriesEnd, browseItems, browseSubRows, s.kept, s.keptNoItem, s.keptNoBuyout, s.dropTooHigh))
-	print(string.format("|cFFFFA500TSM DE Scan:|r TOTAL elapsed=%.2fs (itemList=%.2fs + enqueue=%.2fs + scan=%.2fs + walk=%.2fs)",
-		tWalkEnd - tScanStart,
-		tListBuilt - tScanStart,
-		tEnqueued - tListBuilt,
-		tScanQueriesEnd - tScanQueriesStart,
-		tWalkEnd - tScanQueriesEnd))
-
 end
 
 function private.ShouldInclude(itemString, minBuyout)
