@@ -253,9 +253,15 @@ end
 ---@param itemString string The item string
 ---@return number
 function BagTracking.GetNumMailable(itemString)
-	return BagTracking.CreateQueryBagsItem(itemString)
-		:Equal("isBound", false)
-		:SumAndRelease("quantity")
+	-- 3.3.5: see CreateQueryBagsAuctionable - the slotDB "isBound" flag is unreliable
+	-- (it ends up true for many perfectly mailable items), so filtering on it returned
+	-- 0 mailable and group mailing never queued the item. Only filter on clients that
+	-- actually report it.
+	local query = BagTracking.CreateQueryBagsItem(itemString)
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Equal("isBound", false)
+	end
+	return query:SumAndRelease("quantity")
 end
 
 ---Creates a query of the bank bank.
