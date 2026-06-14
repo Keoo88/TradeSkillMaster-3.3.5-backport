@@ -292,14 +292,23 @@ function List.__protected:_RemoveRows(dataIndex, num)
 	assert(newNumVisibleRows == numVisibleRows or newDataOffset == 0)
 	if numVisibleRows ~= newNumVisibleRows then
 		-- We removed enough rows that we have less total now than were previously visible, so
-		-- redraw the rows which got shifted into view, and hide the extra ones
-		self:_DrawRows(rowIndex, newNumVisibleRows)
+		-- redraw the rows which got shifted into view, and hide the extra ones. Clamp the start
+		-- to 1 in case the removed block began above the visible window (rowIndex < 1), which
+		-- would otherwise pass a negative start index into _DrawRows and trip its assert.
+		self:_DrawRows(max(rowIndex, 1), newNumVisibleRows)
 		self:_HideExtraRows()
 	elseif dataOffset ~= newDataOffset then
 		-- The scroll changed which will already take care of drawing the new rows at the top
 		-- which got shifted in, so do nothing
 	elseif rowIndex > numVisibleRows then
 		-- None of the removed rows were visible, so don't need to draw any
+	elseif rowIndex < 1 then
+		-- The removed block starts at or above the top of the visible window while the scroll
+		-- offset is unchanged, so every visible row now shows data shifted up from below. The
+		-- partial-rotate path below assumes rowIndex >= 1 and would compute negative indices
+		-- here (e.g. _RotateRowsDown(-42, -26, 22) -> _DrawRows(-19, 22) -> assert), so just
+		-- redraw all the visible rows instead.
+		self:_DrawRows(1, numVisibleRows)
 	elseif num > numVisibleRows - rowIndex then
 		-- We're removing enough rows that all the ones being shifted up are coming from off the
 		-- visible area, so just need to draw them

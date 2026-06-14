@@ -78,6 +78,17 @@ local GENERIC_EVENTS = {
 	UI_ERROR_MESSAGE = ClientInfo.IsRetail() and 2 or 1,
 }
 local GENERIC_EVENT_SEP = "/"
+-- 3.3.5: a buyout completes via the formatted "You won an auction for X" system message
+-- (ERR_AUCTION_WON_S). It carries the item name, so unlike the fixed bid message
+-- (ERR_AUCTION_BID_PLACED) it never matches an exact CHAT_MSG_SYSTEM key. We detect it by
+-- prefix/suffix (the middle is the item name) and route it to a synthetic PlaceAuctionBid
+-- success key so a sniper/shopping buyout future resolves instead of timing out and
+-- reporting "Failed to buy auction".
+local AUCTION_WON_TOKEN = "__AUCTION_WON__"
+local AUCTION_WON_PREFIX, AUCTION_WON_SUFFIX = nil, nil
+if ERR_AUCTION_WON_S then
+	AUCTION_WON_PREFIX, AUCTION_WON_SUFFIX = strmatch(ERR_AUCTION_WON_S, "^(.-)%%s(.-)$")
+end
 -- Modern Enum.ItemClass.* -> 3.3.5 AH positional 1-based classIndex.
 -- WotLK GetAuctionItemClasses() order is fixed (Glyph was inserted at position 5,
 -- right after Consumable, in 3.0; Quest Items is the last category):
@@ -106,6 +117,7 @@ local API_EVENT_INFO = not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_H
 		},
 		PlaceAuctionBid = {
 			["CHAT_MSG_SYSTEM"..GENERIC_EVENT_SEP..ERR_AUCTION_BID_PLACED] = { result = true },
+			["CHAT_MSG_SYSTEM"..GENERIC_EVENT_SEP..AUCTION_WON_TOKEN] = { result = true },
 			["UI_ERROR_MESSAGE"..GENERIC_EVENT_SEP..LE_GAME_ERR_AUCTION_DATABASE_ERROR] = { result = false },
 			["UI_ERROR_MESSAGE"..GENERIC_EVENT_SEP..LE_GAME_ERR_AUCTION_HIGHER_BID] = { result = false },
 			["UI_ERROR_MESSAGE"..GENERIC_EVENT_SEP..LE_GAME_ERR_ITEM_NOT_FOUND] = { result = false },
@@ -1076,6 +1088,11 @@ function private.EventHandler(eventName, ...)
 		local genericEventArg = select(GENERIC_EVENTS[eventName], ...)
 		assert(genericEventArg)
 		genericEventArg = tostring(genericEventArg)
+		-- 3.3.5: a buyout's "You won an auction for X" message carries the item name, so it
+		-- won't hit a fixed key; remap it to the synthetic won token so PlaceAuctionBid resolves.
+		if eventName == "CHAT_MSG_SYSTEM" and not private.events[eventName][genericEventArg] and private.IsAuctionWonMessage(genericEventArg) then
+			genericEventArg = AUCTION_WON_TOKEN
+		end
 		if (ClientInfo.IsRetail() and issecretvalue(genericEventArg)) or not private.events[eventName][genericEventArg] then
 			return
 		end
@@ -1109,6 +1126,26 @@ function private.CheckAllIdle()
 			Log.Err("Another wrapper is pending (%s)", apiName)
 			return false
 		end
+	end
+	return true
+end
+
+---3.3.5: matches the formatted ERR_AUCTION_WON_S buyout-won system message by prefix/suffix
+---(the middle is the item name), used to resolve the PlaceAuctionBid future on a buyout.
+---@param msg string
+---@return boolean
+function private.IsAuctionWonMessage(msg)
+	if not AUCTION_WON_PREFIX or type(msg) ~= "string" then
+		return false
+	end
+	if #msg < #AUCTION_WON_PREFIX + #AUCTION_WON_SUFFIX then
+		return false
+	end
+	if AUCTION_WON_PREFIX ~= "" and strsub(msg, 1, #AUCTION_WON_PREFIX) ~= AUCTION_WON_PREFIX then
+		return false
+	end
+	if AUCTION_WON_SUFFIX ~= "" and strsub(msg, #msg - #AUCTION_WON_SUFFIX + 1) ~= AUCTION_WON_SUFFIX then
+		return false
 	end
 	return true
 end

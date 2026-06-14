@@ -349,6 +349,7 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			state.auctionScan:Release()
 			state.auctionScan = nil
 		end
+		self._scanPausedForSelection = false
 		manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
 	elseif action == "ACTION_SET_SCROLL_TABLE" then
 		local auctionScrollTable = ...
@@ -382,13 +383,33 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		state.scanIsPaused = scanIsPaused
 		if state.pausePending ~= nil and state.scanIsPaused == state.pausePending then
 			state.pausePending = nil
-			if state.scanIsPaused and state.selectedAuction then
+			-- 3.3.5 sniper FIRST-selection hang fix: the selection handler now starts the
+			-- find directly, so only fire it here when one hasn't already been started for
+			-- the current selection (findHashIsSelection is set true by
+			-- ACTION_FIND_SELECTED_AUCTION). Re-firing would reset findResult and flicker
+			-- the buttons back to "Finding Selected Auction". Browse still relies on this
+			-- path: findHashIsSelection is false for a fresh browse selection, so it fires.
+			if state.scanIsPaused and state.selectedAuction and not state.findHashIsSelection then
 				manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
 			end
 		end
 	elseif action == "ACTION_SCAN_NUM_ITEMS_CHANGED" then
 		state.scanNumItems = state.auctionScan:GetNumItems()
 	elseif action == "ACTION_PAUSE_RESUME_CLICKED" then
+		-- 3.3.5 sniper: the pause/resume button isn't disabled while a transition
+		-- is pending (unlike browse), and pausePending can get stuck (sniper pins
+		-- scanProgress to 0, so the scan thread may never re-enter _Pause to fire
+		-- the reconciling progress update). A click while pending would otherwise
+		-- re-enter ACTION_PAUSE_SCAN / ACTION_RESUME_SCAN and trip their assert.
+		-- Treat such a click as an unstick: resync to live progress, clear the
+		-- stale pending flag, and don't also toggle the pause state.
+		if state.pausePending ~= nil then
+			local scanProgress, scanIsPaused = state.auctionScan:GetProgress()
+			state.scanProgress = scanProgress
+			state.scanIsPaused = scanIsPaused
+			state.pausePending = nil
+			return
+		end
 		if state.selectedAuction then
 			state.auctionScan:Cancel()
 			AuctionScan.StopFindThread(true)
@@ -398,9 +419,18 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				state.auctionScrollTable:SetSelectedRow(nil)
 			end
 		end
+		-- 3.3.5 off-page buyout fix: this click manages the pause itself, so drop the
+		-- selection-pause marker to avoid a later double-resume.
+		self._scanPausedForSelection = false
 		manager:ProcessAction(state.scanIsPaused and "ACTION_RESUME_SCAN" or "ACTION_PAUSE_SCAN")
 	elseif action == "ACTION_PAUSE_SCAN" then
-		assert(state.pausePending == nil)
+		-- 3.3.5 sniper: a stale pending transition can survive (the reconciling
+		-- progress update may never arrive when scanProgress is pinned to 0), and
+		-- the sniper pause/resume button isn't disabled while pending, so this can
+		-- be re-entered with pausePending set. Clear it instead of asserting.
+		if state.pausePending ~= nil then
+			state.pausePending = nil
+		end
 		state.pausePending = true
 		state.auctionScan:SetPaused(true)
 		-- 3.3.5: a completed browse scan has no live thread left to actually pause,
@@ -412,10 +442,25 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			state.scanIsPaused = scanIsPaused
 			if scanProgress == 1 and not scanIsPaused then
 				state.pausePending = nil
+			elseif state.scanType == SCAN_TYPE.SNIPER and scanIsPaused then
+				-- 3.3.5: sniper pins scanProgress to 0, so the scanProgress==1 path above
+				-- never fires. The scan loops between passes and may not enter _Pause(),
+				-- meaning no further progress update is guaranteed. If the live paused flag
+				-- already matches the requested pause, reconcile now so the progress text
+				-- doesn't get stuck on "Pausing Scan...". The find for a selected lot is now
+				-- started directly by the selection handler, so we must NOT also fire it here
+				-- -- doing both double-fires the find and flickers the buttons back to
+				-- "Finding Selected Auction".
+				state.pausePending = nil
 			end
 		end
 	elseif action == "ACTION_RESUME_SCAN" then
-		assert(state.pausePending == nil)
+		-- 3.3.5 sniper: clear a stale pending transition instead of asserting
+		-- (see ACTION_PAUSE_SCAN); pausePending can be left set when the
+		-- reconciling progress update never arrives on a pinned-progress sniper.
+		if state.pausePending ~= nil then
+			state.pausePending = nil
+		end
 		state.pausePending = false
 		state.auctionScan:SetPaused(false)
 		-- 3.3.5: if the scan already finished (single quick browse on classic),
@@ -427,6 +472,14 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			state.scanProgress = scanProgress
 			state.scanIsPaused = scanIsPaused
 			if scanProgress == 1 and not scanIsPaused then
+				state.pausePending = nil
+			elseif state.scanType == SCAN_TYPE.SNIPER and not scanIsPaused then
+				-- 3.3.5: sniper pins scanProgress to 0, so the scanProgress==1 path above
+				-- never fires. When the scan wasn't actually paused (common race after a
+				-- find-on-demand buy), the scan thread never re-enters _Pause() and no
+				-- further OnProgressUpdate arrives, leaving pausePending stuck at false and
+				-- the bottom bar frozen on "Resuming Scan...". The live paused flag already
+				-- reflects the resumed state, so reconcile now.
 				state.pausePending = nil
 			end
 		end
@@ -494,6 +547,14 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				AuctionScan.StopFindThread(false)
 				manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
 			end
+			-- 3.3.5 off-page buyout fix: if we paused the sniper to query/keep the
+			-- selected lot on the native list, resume it now that nothing is selected.
+			if self._scanPausedForSelection then
+				self._scanPausedForSelection = false
+				if state.scanIsPaused or state.pausePending == true then
+					manager:ProcessAction("ACTION_RESUME_SCAN")
+				end
+			end
 			return
 		end
 		manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", selection)
@@ -506,22 +567,43 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			-- свой per-item query — не нужно ждать паузы основного скана. Это убирает
 			-- задержку в 1-2 сек между кликом и активацией кнопок Buy/Bid.
 			if LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic() then
-				if selection:IsSubRow() then
-					-- 3.3.5: skip live FindAuction. It competes with the active scan thread
-					-- for requestFuture and leaves Buy/Bid disabled while "Resuming scan..."
-					-- spins. The subRow already has _buyout/_quantity/_itemLink from the
-					-- browse-time snapshot — that's enough for the buttons to enable.
-					-- findResult is set to a non-empty sentinel so the UI gating
-					-- (isSearchingForSelection = selectedAuction ~= nil and not findResult)
-					-- evaluates false. findDeferred flag tells ACTION_BUY_AUCTION to run a
-					-- real find-on-demand before placing the bid/buyout.
-					state.findHash = selection:GetHashes()
-					state.findResult = { 0 }
-					state.findDeferred = true
-					state.findHashIsSelection = true
-					state.numFound = 1
-					state.maxQuantity = 1
-					state.defaultBuyQuantity = 1
+				if not selection:IsSubRow() then
+					-- Just wait until we scan this row
+					if state.scanIsPaused then
+						-- Resume the scan
+						manager:ProcessAction("ACTION_RESUME_SCAN")
+					end
+				else
+					-- 3.3.5 sniper buyout fix (reliable path): PAUSE the scan so its GetAll
+					-- browse stops rewriting the native "list", then locate the selected lot
+					-- on the now-settled list. Pausing fires ACTION_FIND_SELECTED_AUCTION via
+					-- the pause-complete handler; on classic that find stays on the current
+					-- page with NO extra query when the lot is already there, and only does a
+					-- per-item query for an off-page accumulated lot -- which is safe now
+					-- because the scan stays paused, so nothing overwrites the list before the
+					-- click. The Buy/Bid CLICK then re-validates the index and places the
+					-- protected PlaceAuctionBid synchronously in its OWN hardware-event stack --
+					-- the only timing Warmane accepts. This is the exact flow the working
+					-- Browse tab uses. The earlier no-pause sentinel raced the live scan: at
+					-- click the list wasn't settled, the synchronous locate found nothing, and
+					-- the click fell back to the async find whose bid Warmane silently drops
+					-- (the "BUYDBG ... NO new query" line that still ended in "Failed to buy").
+					-- Keep the scan paused until the buy finishes; it is resumed on
+					-- success / deselect / pause-button.
+					self._scanPausedForSelection = true
+					-- 3.3.5 sniper FIRST-selection hang fix: do NOT depend on the pause-complete
+					-- progress update to start the find. ACTION_PAUSE_SCAN's reconcile clears
+					-- pausePending the instant raw scanProgress reads 1 (which the sniper hits
+					-- between GetAll passes), so the later real-pause progress update finds
+					-- pausePending already nil and never fires the find -- the FIRST selected lot
+					-- then sticks forever on "Finding Selected Auction" and only recovers when
+					-- another lot is clicked (scan already paused -> direct-find path). The find
+					-- thread waits for CanSendQuery itself, so request the pause (to stop the
+					-- GetAll rewriting the native list) and start the find right away.
+					if not state.scanIsPaused then
+						manager:ProcessAction("ACTION_PAUSE_SCAN")
+					end
+					manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
 				end
 			elseif not selection:IsSubRow() then
 				-- Just wait until we scan this row
@@ -634,6 +716,17 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				local _, rawLink = state.selectedAuction:GetLinks()
 				state.selectedAuction:GetResultRow():RemoveSubRow(state.selectedAuction)
 				ChatMessage.PrintfUser(L["Failed to find auction for %s, so removing it from the results."], rawLink)
+				-- 3.3.5 off-page buyout fix: if the sniper was paused for this selection,
+				-- clear it and resume so the scan doesn't stay stuck on "Scan Paused".
+				if self._scanPausedForSelection then
+					self._scanPausedForSelection = false
+					state.findHash = nil
+					if state.auctionScrollTable then
+						state.auctionScrollTable:SetSelectedRow(nil)
+					end
+					manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
+					manager:ProcessAction("ACTION_RESUME_SCAN")
+				end
 			elseif state.scanIsPaused then
 				-- Clear the selection and resume the scan
 				state.findHash = nil
@@ -668,14 +761,48 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		-- can't send its per-item query while the main scan still holds requestFuture.
 		if (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic())
 			and (state.findDeferred or not state.findResult) then
-			state.findDeferred = false
-			state.findResult = nil
-			state.pendingBuyOnFind = true
-			self._resumeAfterFind = not state.scanIsPaused and state.pausePending ~= true
-			if self._resumeAfterFind then
-				manager:ProcessAction("ACTION_PAUSE_SCAN")
+			-- 3.3.5 sniper buyout fix: Warmane gates PlaceAuctionBid as a protected
+			-- function (ADDON_ACTION_BLOCKED); it only succeeds when called inside the
+			-- synchronous call stack of the hardware-event button click. The old path ran
+			-- an async find-on-demand thread between the click and the bid, so by the time
+			-- PlaceAuctionBid fired (from the scheduler) the hardware-event blessing was
+			-- gone and the bid was silently dropped (no gold, no event, 5s timeout).
+			-- Mirror TSM 2.8 DoBuyout: locate the lot on the live native "list"
+			-- synchronously here, then fall through to bid in the same stack. Only fall
+			-- back to the async find when the lot isn't on the current native page.
+			local matches = nil
+			if selection and selection:IsSubRow() and GetNumAuctionItems then
+				for i = 1, (GetNumAuctionItems("list") or 0) do
+					if selection:EqualsIndex(i, false) or selection:EqualsIndex(i, true) then
+						matches = matches or {}
+						tinsert(matches, i)
+					end
+				end
 			end
-			return manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
+			if matches then
+				state.findDeferred = false
+				state.pendingBuyOnFind = false
+				self._resumeAfterFind = false
+				state.findHash = selection:GetHashes()
+				state.findHashIsSelection = true
+				state.findResult = matches
+				local maxQuantity = state.searchContext:GetMaxCanBuy(selection:GetItemString())
+				state.numFound = min(#matches, maxQuantity and Math.Ceil(maxQuantity / selection:GetQuantities()) or math.huge)
+				state.maxQuantity = maxQuantity and min(maxQuantity, state.numFound) or 1
+				state.defaultBuyQuantity = state.numFound
+				state.numBid = 0
+				state.numBought = 0
+				state.numConfirmed = 0
+			else
+				state.findDeferred = false
+				state.findResult = nil
+				state.pendingBuyOnFind = true
+				self._resumeAfterFind = not state.scanIsPaused and state.pausePending == nil
+				if self._resumeAfterFind then
+					manager:ProcessAction("ACTION_PAUSE_SCAN")
+				end
+				return manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
+			end
 		end
 		if not self:_ShowConfirmation(true) then
 			-- No confirmation needed
@@ -688,6 +815,9 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		local quantity = ...
 		state.lastBuyQuantity = 0
 		state.lastBuyIndex = nil
+		-- 3.3.5 sniper buyout fix (part 6): fresh confirmed buy, so reset the
+		-- no-requery re-bid retry counter used by ACTION_BUYOUT_FUTURE_DONE.
+		self._buyoutRetries = nil
 		local index = (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic()) and tremove(state.findResult, #state.findResult) or nil
 		if (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic()) and not index then
 			-- Didn't find the full amount
@@ -704,6 +834,21 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			local ok = state.selectedAuction:EqualsIndex(index, false)
 			if not ok then
 				ok = state.selectedAuction:EqualsIndex(index, true)
+			end
+			if not ok then
+				-- 3.3.5 sniper buyout fix (part 4): the lot is no longer at the stored
+				-- index because the native "list" shifted during the post-find throttle
+				-- wait (seller-resolve / list refresh). Re-locate it by identity across the
+				-- whole current list WITHOUT a new query (so the server bid-throttle we just
+				-- waited out stays cleared) and bid at the new index instead of giving up.
+				local liveTotal = GetNumAuctionItems and GetNumAuctionItems("list") or 0
+				for i = 1, liveTotal do
+					if state.selectedAuction:EqualsIndex(i, false) or state.selectedAuction:EqualsIndex(i, true) then
+						index = i
+						ok = true
+						break
+					end
+				end
 			end
 			if not ok then
 				-- Lot vanished between find and confirm. Don't loop through another find
@@ -759,10 +904,21 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				state.numBid = 0
 				state.numBought = 0
 				state.numConfirmed = 0
+				-- 3.3.5 off-page buyout fix: the buy sequence is done, so resume the
+				-- sniper we paused for this selection.
+				if self._scanPausedForSelection then
+					self._scanPausedForSelection = false
+					manager:ProcessAction("ACTION_RESUME_SCAN")
+				end
 			end
 		else
 			local _, rawLink = state.selectedAuction:GetLinks()
 			ChatMessage.PrintfUser(L["Failed to buy auction of %s."], rawLink)
+			-- 3.3.5: the buyout future resolved false (server dropped the bid). Do NOT
+			-- re-bid re-entrantly here: this handler runs from Future:_HandleFutureDone,
+			-- which only clears state.pendingFuture AFTER we return, so calling
+			-- ManageFuture("pendingFuture", ...) now would trip assert(not state[stateKey])
+			-- in UIManager (the crash). Put the index back and let the normal rescan retry.
 			if state.lastBuyQuantity > 0 then
 				state.numBought = state.numBought - ((not LibTSMUI.IsVanillaClassic() and not LibTSMUI.IsBCClassic() and not LibTSMUI.IsWrathClassic()) and state.lastBuyQuantity or 1)
 				if LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic() then
@@ -807,14 +963,46 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		local selection = state.auctionScrollTable:GetSelectedRow()
 		if (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic())
 			and (state.findDeferred or not state.findResult) then
+			-- 3.3.5 sniper bid fix: mirror ACTION_BUY_AUCTION. PlaceAuctionBid is a
+			-- protected call on Warmane and only succeeds inside the synchronous
+			-- hardware-event click stack, so locate the lot on the live native "list"
+			-- here and fall through to bid in the same stack. Fall back to the async
+			-- find only when the lot isn't on the current native page.
+			local matches = nil
+			if selection and selection:IsSubRow() and GetNumAuctionItems then
+				for i = 1, (GetNumAuctionItems("list") or 0) do
+					if selection:EqualsIndex(i, false) or selection:EqualsIndex(i, true) then
+						matches = matches or {}
+						tinsert(matches, i)
+					end
+				end
+			end
+			if matches then
+				state.findDeferred = false
+				state.pendingBidOnFind = false
+				self._resumeAfterFind = false
+				state.findHash = selection:GetHashes()
+				state.findHashIsSelection = true
+				state.findResult = matches
+				local maxQuantity = state.searchContext:GetMaxCanBuy(selection:GetItemString())
+				state.numFound = min(#matches, maxQuantity and Math.Ceil(maxQuantity / selection:GetQuantities()) or math.huge)
+				state.maxQuantity = maxQuantity and min(maxQuantity, state.numFound) or 1
+				state.defaultBuyQuantity = state.numFound
+				state.numBid = 0
+				state.numBought = 0
+				state.numConfirmed = 0
+			else
 			state.findDeferred = false
 			state.findResult = nil
 			state.pendingBidOnFind = true
-			self._resumeAfterFind = not state.scanIsPaused and state.pausePending ~= true
+			-- 3.3.5: see ACTION_BUY_AUCTION — only pause when no transition is pending
+			-- so we don't re-trip assert(pausePending == nil) in ACTION_PAUSE_SCAN.
+			self._resumeAfterFind = not state.scanIsPaused and state.pausePending == nil
 			if self._resumeAfterFind then
 				manager:ProcessAction("ACTION_PAUSE_SCAN")
 			end
 			return manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
+			end
 		end
 		if not self:_ShowConfirmation(false) then
 			-- No confirmation needed
@@ -861,6 +1049,11 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			state.auctionScrollTable:UpdateData() -- TODO: Remove this
 			state.auctionScrollTable:SetSelectedRow(nil)
 			manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
+			-- 3.3.5 off-page buyout fix: resume the sniper we paused for this selection.
+			if self._scanPausedForSelection then
+				self._scanPausedForSelection = false
+				manager:ProcessAction("ACTION_RESUME_SCAN")
+			end
 		else
 			local _, rawLink = state.selectedAuction:GetLinks()
 			ChatMessage.PrintfUser(L["Failed to bid on auction of %s."], rawLink)

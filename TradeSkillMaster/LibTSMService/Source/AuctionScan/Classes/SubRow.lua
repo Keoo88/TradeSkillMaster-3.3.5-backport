@@ -59,6 +59,8 @@ function AuctionSubRow:__init()
 	self._browseId = nil
 	self._numAuctions = 1
 	self._texture = nil
+	self._sniperKept = false
+	self._sniperMaxPrice = nil
 end
 
 function AuctionSubRow:_Acquire(resultRow)
@@ -444,6 +446,8 @@ function AuctionSubRow:_SetRawData(data, browseId, itemLink)
 	self._hash = nil
 	self._hashNoSeller = nil
 	self._browseId = browseId
+	self._sniperKept = false
+	self._sniperMaxPrice = nil
 	if data then
 		if LibTSMService.IsVanillaClassic() or LibTSMService.IsBCClassic() or LibTSMService.IsWrathClassic() then
 			local _, texture, stackSize, _, _, _, minBid, minIncrement, buyout, bid, isHighBidder, seller, _, _, _ = GetAuctionItemInfo("list", data)

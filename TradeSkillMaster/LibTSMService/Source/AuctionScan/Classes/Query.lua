@@ -73,6 +73,7 @@ function AuctionQuery:__init()
 	self._browseResults = {} ---@type table<string,AuctionRow>
 	self._page = 0
 	self._staleSubRowsCleared = false
+	self._accumulate = false
 	self._useGetAll = false
 	self._traceTag = nil
 	self._tStart = nil
@@ -118,6 +119,7 @@ function AuctionQuery:_Release()
 	wipe(self._browseResults)
 	self._page = 0
 	self._staleSubRowsCleared = false
+	self._accumulate = false
 	self._useGetAll = false
 	self._traceTag = nil
 	self._tStart = nil
@@ -318,6 +320,17 @@ function AuctionQuery:SetUseGetAll(useGetAll)
 	return self
 end
 
+---Sets whether browse results accumulate across repeated browses instead of being
+---wiped before each one. Used by the classic Sniper so found lots persist in the
+---list between rescans (deduped by auction hash). Results are still cleared when the
+---query is released (i.e. when the scan is stopped or restarted).
+---@param accumulate boolean
+---@return AuctionQuery
+function AuctionQuery:SetAccumulate(accumulate)
+	self._accumulate = accumulate and true or false
+	return self
+end
+
 ---Enables per-query timing chat-prints (start / per-page / done) with the given tag.
 ---@param tag string Short label printed in chat to identify this query
 ---@return AuctionQuery
@@ -338,7 +351,9 @@ end
 ---@return Future
 function AuctionQuery:Browse()
 	-- 3.3.5: очищаем stale subRows перед новым browse (чтобы UI не показывал старые лоты)
-	if not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+	-- Sniper accumulate mode (SetAccumulate) skips this wipe so found lots persist
+	-- in the list across rescans instead of vanishing each pass.
+	if not self._accumulate and not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		local numRows = 0
 		local numSubRows = 0
 		for _, row in pairs(self._browseResults) do

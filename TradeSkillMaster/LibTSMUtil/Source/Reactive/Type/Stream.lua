@@ -65,6 +65,17 @@ function ReactiveStream:PublisherWithInitialValue(initialValue)
 	return publisher
 end
 
+-- Dispatches the queued publishers. Kept as a separate local so Send can run it under pcall
+-- and always restore its _sending/_sendQueue state afterwards, even if a subscriber errors.
+local function DispatchSendQueue(self, sendQueue, data)
+	for i = 1, #sendQueue do
+		local publisher = sendQueue[i]
+		if self._publishers[publisher] ~= nil then
+			publisher:_HandleData(data)
+		end
+	end
+end
+
 ---Sends a new data value the stream's publishers.
 ---@param data table The data to send
 function ReactiveStream:Send(data)
@@ -75,14 +86,17 @@ function ReactiveStream:Send(data)
 	for i = 1, #publishers do
 		sendQueue[i] = publishers[i]
 	end
-	for i = 1, #sendQueue do
-		local publisher = sendQueue[i]
-		if self._publishers[publisher] ~= nil then
-			publisher:_HandleData(data)
-		end
-	end
+	-- Dispatch under pcall so an error inside a subscriber's _HandleData (e.g. an assert raised
+	-- while a List/ScrollTable redraws) can't leave this stream stuck with _sending=true and a
+	-- populated _sendQueue. Previously that permanently bricked the stream object (which is
+	-- reused across DBs), so every later Send tripped the assert above. Always clean up, then
+	-- re-raise the original error.
+	local ok, err = pcall(DispatchSendQueue, self, sendQueue, data)
 	wipe(sendQueue)
 	self._sending = false
+	if not ok then
+		error(err, 0)
+	end
 end
 
 ---Registers a script handler on the stream.

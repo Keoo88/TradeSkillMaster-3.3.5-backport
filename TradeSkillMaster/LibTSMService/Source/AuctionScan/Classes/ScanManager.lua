@@ -643,8 +643,29 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 	for passNoSeller = 0, 1 do
 		local passFlag = passNoSeller == 1 or noSeller
 		-- search the current page for the auction first (cheap)
+		-- 3.3.5 sniper buyout fix: SKIP the current-page shortcut for the sniper.
+		-- The sniper's live Blizzard "list" is its own accumulated, custom-sorted
+		-- browse page (SetPage("LAST") / reverse sort), and PlaceAuctionBid("list", i)
+		-- against an index into that list is silently dropped by the server on 3.3.5a
+		-- (no event, no gold change, 5s timeout) even though the index is valid
+		-- client-side. The per-item NAME query below re-populates the native "list"
+		-- with a small, default-sorted (SetPage(0)) result set that the server accepts
+		-- bids against -- exactly like the Browse tab and the default UI, both of
+		-- which buy fine. Browse keeps the fast current-page shortcut (resolveSellers
+		-- is true for the classic Browse scan, false for Sniper).
 		wipe(self._findResult)
 		if self:_FindAuctionOnCurrentPage(row, passFlag) then
+			-- 3.3.5 sniper buyout fix (part 5): bid into the EXISTING live "list" with NO
+			-- preceding query, exactly like the Browse tab / default UI (both buy fine).
+			-- Every attempt that fired a fresh QueryAuctionItems right before
+			-- PlaceAuctionBid -- broad accumulate list, clean 6-item name query, or
+			-- 50-item name query, with a 0.2s OR a 2s wait -- was silently dropped by the
+			-- server (no event, no gold, 5s timeout). The only path that works (Browse)
+			-- never re-queries before bidding. The clicked sniper lot is almost always
+			-- still on the current live page, so locate it there and bid with no new
+			-- query. (Previously gated on self._resolveSellers, i.e. Browse-only; the
+			-- per-item-query fallback below still runs only when the lot is not on the
+			-- current live page.)
 			return self._findResult
 		end
 
@@ -681,6 +702,36 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 			end
 			wipe(self._findResult)
 			if self:_FindAuctionOnCurrentPage(row, passFlag) then
+				-- 3.3.5 sniper buyout fix (part 2): the per-item query above just
+				-- repopulated the native "list" and the server is still streaming
+				-- AUCTION_ITEM_LIST_UPDATE events (CanSendQuery() is still on its
+				-- post-query throttle, i.e. canSendQuery=false). Placing PlaceAuctionBid
+				-- against the list during this unsettled window is silently dropped by
+				-- the server (5s timeout, gold not spent). Wait for the AH to go idle
+				-- again (throttle cleared / list settled) before returning the index,
+				-- exactly like the Browse tab and default UI where the list has long
+				-- settled before the user clicks Buyout.
+				local settleStart = GetTime and GetTime() or 0
+				while not AuctionHouse.CanSendQuery() do
+					Threading.Yield(true)
+					if self._cancelled then
+						return nil
+					end
+					if (GetTime and GetTime() or 0) - settleStart > 3 then
+						break
+					end
+				end
+				-- 3.3.5 sniper buyout fix (part 3): Warmane throttles PlaceAuctionBid for
+				-- a couple seconds after ANY auction query from the player. CanSendQuery()
+				-- (the client query throttle) clears FASTER than this server-side bid
+				-- throttle, which is why canSendQuery=true above yet the bid is still
+				-- silently dropped (no event, no gold change, 5s client timeout). The
+				-- sniper is always querying (or just requeried right here), so the bid
+				-- always lands inside that window. Browse / default UI work only because
+				-- of the human gap (select -> click Buy -> confirm) with no query in
+				-- between. The scan is paused during this find (no queries fire while we
+				-- sleep), so wait out the server bid-throttle before returning the index.
+				Threading.Sleep(2)
 				return self._findResult
 			elseif self._cancelled then
 				return nil

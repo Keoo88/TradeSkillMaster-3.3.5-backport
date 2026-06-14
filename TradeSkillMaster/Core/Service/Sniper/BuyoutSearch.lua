@@ -50,6 +50,9 @@ function private.ScanThread(auctionScan)
 			:AddCustomFilter(private.QueryFilter)
 		if ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic() then
 			query:SetPage("LAST")
+			-- 3.3.5: keep found lots in the list across rescans; the list is cleared
+			-- only when the scan is stopped/restarted (the query is released then)
+			query:SetAccumulate(true)
 		end
 	end
 	auctionScan:SetScript("OnQueryDone", private.OnQueryDone)
@@ -64,6 +67,15 @@ function private.QueryFilter(_, subRow, isSubRow, itemKey)
 	local baseItemString = subRow:GetBaseItemString()
 	local itemString = subRow:GetItemString()
 	local isClassic = ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic()
+
+	-- 3.3.5 accumulate mode: once a lot has been accepted into the Sniper list it
+	-- becomes sticky and is kept across rescans, so DBMarket drift (each rescan
+	-- rewrites market value, which lowers the belowPrice threshold) or a transient
+	-- itemInfo gap can no longer silently drop an already-found lot. The list is
+	-- cleared only when the scan is stopped/restarted (the query is released).
+	if isClassic and isSubRow and subRow._sniperKept then
+		return false
+	end
 
 	-- 3.3.5 fix: if SubRow has no itemString, we can't check operations - filter it out
 	if isSubRow and not itemString then
@@ -90,7 +102,15 @@ function private.QueryFilter(_, subRow, isSubRow, itemKey)
 		return true
 	elseif itemString then
 		-- Filter if the buyout is too high
-		return itemBuyout > maxPrice
+		local filtered = itemBuyout > maxPrice
+		if isClassic and isSubRow and not filtered then
+			-- Accepted snipe: mark sticky so it persists across rescans (see note above)
+			subRow._sniperKept = true
+			-- Freeze the threshold used for the displayed % so it doesn't drift upward
+			-- as later rescan passes rewrite DBMarket and lower the live threshold.
+			subRow._sniperMaxPrice = maxPrice
+		end
+		return filtered
 	end
 
 	-- Retail path: check variations
@@ -121,6 +141,13 @@ function private.QueryFilter(_, subRow, isSubRow, itemKey)
 end
 
 function private.MarketValueFunction(row)
+	-- 3.3.5: for a lot already accepted into the Sniper list, return the snipe
+	-- threshold captured at find time so the displayed % stays stable instead of
+	-- drifting upward as each rescan pass rewrites DBMarket (which lowers the live
+	-- threshold). Falls back to the live value for not-yet-accepted/parent rows.
+	if row._sniperMaxPrice then
+		return row._sniperMaxPrice
+	end
 	local itemString = row:GetItemString()
 	return itemString and SniperOperation.GetMaxPrice(itemString) or nil
 end

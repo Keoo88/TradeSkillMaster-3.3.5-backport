@@ -357,7 +357,13 @@ function AuctionRow:PopulateSubRows(browseId, index, itemLink)
 				local _, existingHashNoSeller = existingSubRow:GetHashes()
 				local _, _, existingBrowseId = existingSubRow:GetListingInfo()
 				if hashNoSeller == existingHashNoSeller and browseId ~= existingBrowseId then
-					-- Replace the existing subRow
+					-- Replace the existing subRow. Carry over the Sniper sticky-keep
+					-- flag so a lot that was already accepted stays in the list even
+					-- when it gets re-seen on a later rescan page.
+					if existingSubRow._sniperKept then
+						subRow._sniperKept = true
+						subRow._sniperMaxPrice = existingSubRow._sniperMaxPrice
+					end
 					existingSubRow:Release()
 					self._subRows[i] = subRow
 					return
