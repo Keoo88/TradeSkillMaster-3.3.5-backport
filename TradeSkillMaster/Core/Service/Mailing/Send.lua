@@ -20,6 +20,7 @@ local Threading = TSM.LibTSMTypes:Include("Threading")
 local ItemInfo = TSM.LibTSMService:Include("Item.ItemInfo")
 local BagTracking = TSM.LibTSMService:Include("Inventory.BagTracking")
 local Inbox = TSM.LibTSMWoW:Include("API.Inbox")
+local ClientInfo = TSM.LibTSMWoW:Include("Util.ClientInfo")
 local private = {
 	settings = nil,
 	thread = nil,
@@ -102,13 +103,29 @@ function private.SendMailThread(recipient, subject, body, money, items, isGroup,
 	ClearSendMail()
 	local itemInfo = Threading.AcquireSafeTempTable()
 
+	-- 3.3.5: the slotDB can be stale/empty for non-backpack bags because the login-time
+	-- BAG_UPDATE events are unreliable on this client, so the send query below found 0
+	-- locations for items that are actually in the bags and item mail silently did nothing.
+	-- Force a synchronous rescan first, exactly like the Auctioning post scan / CanPost do.
+	if not ClientInfo.IsRetail() then
+		BagTracking.RescanAllBags()
+	end
+
+	-- 3.3.5: the slotDB "isBound" flag is unreliable here (it ends up true for many
+	-- perfectly mailable items - the native container API has no real bound flag), and
+	-- isWarBound does not exist on this client, so this bound filter removed every item
+	-- from the send query: nothing got attached and item mail silently never sent (gold
+	-- still worked via the no-items path above). Only apply the bound filter on clients
+	-- that actually report it; the explicit `items` list below already gates attachments.
 	local query = BagTracking.CreateQueryBags()
 		:OrderBy("slotId", true)
-		:Or()
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Or()
 			:Equal("isBound", false)
 			:Equal("isWarBound", true)
 		:End()
-		:Select("bag", "slot", "itemString", "quantity")
+	end
+	query:Select("bag", "slot", "itemString", "quantity")
 	for _, bag, slot, itemString, quantity in query:Iterator() do
 		if isGroup then
 			itemString = Group.TranslateItemString(itemString)
