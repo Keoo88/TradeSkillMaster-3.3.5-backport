@@ -60,7 +60,14 @@ function PlayerInfo.GetConnectedAlts()
 	for _, factionrealm in private.settingsDB:AccessibleRealmIterator("factionrealm", not private.settings.regionWide) do
 		for _, character in private.settingsDB:AccessibleCharacterIterator(nil, factionrealm) do
 			local realm = gsub(strmatch(factionrealm, "^[^%-]+ %- (.+)$"), "%-", "")
-			character = CharacterInfo.Ambiguate(gsub(character.."-"..realm, " ", ""), "none")
+			if ClientInfo.IsRetail() then
+				character = CharacterInfo.Ambiguate(gsub(character.."-"..realm, " ", ""), "none")
+			else
+				-- 3.3.5a has no connected realms and in-game mail is addressed by the bare
+				-- character name, so don't append "-Realm" - otherwise the recipient autocomplete
+				-- inserts e.g. "Egortbeast-Icecrown" into the field and the realm has to be deleted.
+				character = gsub(character, " ", "")
+			end
 			if character ~= SessionInfo.GetCharacterName() then
 				tinsert(private.connectedAlts, character)
 			end
