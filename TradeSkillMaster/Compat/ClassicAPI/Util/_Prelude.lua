@@ -9,8 +9,9 @@
 --   * The files capture the addon's private table via `...`; bundled inside TSM that table is TSM's own
 --     addon object, and writing keys into it breaks TSM:NewPackage's `assert(not self[name])`.
 --
--- So: if the external addon is present, set the SKIP flag and every bundled file early-returns. Otherwise
--- create an ISOLATED private table for the bundled files to share, decoupled from TSM's addon object.
+-- So: if the external !!!ClassicAPI addon is installed, set the SKIP flag and every bundled file
+-- early-returns. Otherwise create an ISOLATED private table for the bundled files to share, decoupled
+-- from TSM's addon object.
 if IsAddOnLoaded and IsAddOnLoaded("!!!ClassicAPI") then
 	_G.__TSM_ClassicAPI_SKIP = true
 else
