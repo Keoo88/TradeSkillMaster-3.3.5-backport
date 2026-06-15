@@ -16,11 +16,16 @@
 ## Author: Keoo (Discord: https://discord.gg/sKpJbUrsvR)
 ## Version: v4.14.66
 ## SavedVariables: TradeSkillMasterDB, TSMItemInfoDB, TSMDebugDB, TSMLocaleOverride
-## Dependencies: !!!ClassicAPI
-## OptionalDeps: ArkInventory, Auc-Advanced, Auctionator, OribosExchange, AuctionDB, CanIMogIt
+## OptionalDeps: !!!ClassicAPI, ArkInventory, Auc-Advanced, Auctionator, OribosExchange, AuctionDB, CanIMogIt
 ## X-Embeds: Ace3, LibDataBroker-1.1, LibDBIcon-1.0, LibRealmInfo, LibDeflate, LibSerialize, LibAHTab
 
-# Wrath 3.3.5a backport bootstrap (must be FIRST)
+# Bundled Classic API polyfill (self-contained; replaces the former hard !!!ClassicAPI dependency).
+# Must load before WrathBootstrap, which patches/extends it. All shims are define-if-missing, so when
+# the external !!!ClassicAPI addon is present (e.g. for Clique/TPT) it loads first and this copy is inert.
+Compat\ClassicAPI\Lib\Load.xml
+Compat\ClassicAPI\Load.xml
+
+# Wrath 3.3.5a backport bootstrap (must be FIRST after the polyfill)
 Compat\WrathBootstrap.lua
 Compat\TSMDebug.lua
 
