@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local BagTracking = LibTSMUI:From("LibTSMService"):Include("Inventory.BagTracking")
 local AuctionHouse = LibTSMUI:From("LibTSMWoW"):Include("API.AuctionHouse")
 local Table = LibTSMUI:From("LibTSMUtil"):Include("Lua.Table")
 local UIManager = LibTSMUI:From("LibTSMUtil"):IncludeClassType("UIManager")
@@ -25,6 +26,7 @@ AuctioningEditDialog:_ExtendStateSchema()
 	:AddBooleanField("priceIsValid", true)
 	:AddOptionalNumberField("numStacks")
 	:AddOptionalNumberField("stackSize")
+	:AddNumberField("bagQuantity", 0)
 	:Commit()
 AuctioningEditDialog:_AddActionScripts("OnSaveClicked")
 
@@ -87,10 +89,9 @@ function AuctioningEditDialog:Acquire()
 			)
 		)
 	)
-	-- TODO: implement editing stack sizes
 	self:AddChild(UIElements.New("Frame", "numStacks")
 		:SetLayout("HORIZONTAL")
-		:SetHeight(20)
+		:SetHeight(24)
 		:SetMargin(0, 0, 0, 16)
 		:AddChild(UIElements.New("Text", "label")
 			:SetMargin(0, 8, 0, 0)
@@ -100,16 +101,25 @@ function AuctioningEditDialog:Acquire()
 		:AddChild(UIElements.New("Input", "input")
 			:SetSize(62, 24)
 			:SetBackgroundColor("PRIMARY_BG_ALT")
+			:SetJustifyH("RIGHT")
 			:SetValidateFunc("NUMBER", "1:5000")
-			:SetDisabled(true)
+			:SetManager(self._childManager)
 			:SetValuePublisher(self._state:PublisherForKeyChange("numStacks")
 				:IgnoreNil()
 			)
+			:SetAction("OnValueChanged", "ACTION_NUM_STACKS_CHANGED")
+		)
+		:AddChild(UIElements.New("ActionButton", "maxBtn")
+			:SetSize(48, 24)
+			:SetMargin(8, 0, 0, 0)
+			:SetText(L["Max"])
+			:SetManager(self._childManager)
+			:SetAction("OnClick", "ACTION_MAX_NUM_STACKS")
 		)
 	)
 	self:AddChild(UIElements.New("Frame", "stackSize")
 		:SetLayout("HORIZONTAL")
-		:SetHeight(20)
+		:SetHeight(24)
 		:SetMargin(0, 0, 0, 16)
 		:AddChild(UIElements.New("Text", "label")
 			:SetMargin(0, 8, 0, 0)
@@ -119,11 +129,20 @@ function AuctioningEditDialog:Acquire()
 		:AddChild(UIElements.New("Input", "input")
 			:SetSize(62, 24)
 			:SetBackgroundColor("PRIMARY_BG_ALT")
+			:SetJustifyH("RIGHT")
 			:SetValidateFunc("NUMBER", "1:5000")
-			:SetDisabled(true)
+			:SetManager(self._childManager)
 			:SetValuePublisher(self._state:PublisherForKeyChange("stackSize")
 				:IgnoreNil()
 			)
+			:SetAction("OnValueChanged", "ACTION_STACK_SIZE_CHANGED")
+		)
+		:AddChild(UIElements.New("ActionButton", "maxBtn")
+			:SetSize(48, 24)
+			:SetMargin(8, 0, 0, 0)
+			:SetText(L["Max"])
+			:SetManager(self._childManager)
+			:SetAction("OnClick", "ACTION_MAX_STACK_SIZE")
 		)
 	)
 	self:AddChild(UIElements.New("Frame", "duration")
@@ -168,9 +187,30 @@ function AuctioningEditDialog:SetAuction(itemString, postTime, bid, buyout, numS
 	self._state.itemString = itemString
 	self._state.numStacks = numStacks
 	self._state.stackSize = stackSize
+	self._originalBid = bid
+	self._originalBuyout = buyout
+	assert(not self._bagQuery)
+	self._bagQuery = BagTracking.CreateQueryBagsItemAuctionable(itemString)
+	self:AddCancellable(self._bagQuery:Publisher()
+		:MapToValue(self._bagQuery)
+		:MapWithMethod("Sum", "quantity")
+		:AssignToTableKey(self._state, "bagQuantity")
+	)
 	self:GetElement("price"):SetAuction(itemString, bid, buyout, stackSize)
 	self:GetElement("duration.toggle"):SetOption(AuctionHouse.DURATIONS[postTime])
 	return self
+end
+
+function AuctioningEditDialog:Release()
+	-- Release the super first so the bag query's publisher (added via AddCancellable)
+	-- is cancelled before we release the query itself (Query:_Release asserts no publishers).
+	self.__super:Release()
+	if self._bagQuery then
+		self._bagQuery:Release()
+		self._bagQuery = nil
+	end
+	self._originalBid = nil
+	self._originalBuyout = nil
 end
 
 
@@ -184,12 +224,56 @@ function AuctioningEditDialog.__private:_ActionHandler(manager, state, action, .
 		self:GetBaseElement():HideDialog()
 	elseif action == "ACTION_PRICE_IS_VALID_CHANGED" then
 		state.priceIsValid = ...
+	elseif action == "ACTION_NUM_STACKS_CHANGED" then
+		state.numStacks = tonumber(self:GetElement("numStacks.input"):GetValue())
+	elseif action == "ACTION_STACK_SIZE_CHANGED" then
+		state.stackSize = tonumber(self:GetElement("stackSize.input"):GetValue())
+		if not state.stackSize then
+			return
+		end
+		self:GetElement("price"):SetStackSize(state.stackSize)
+		self:_RescalePerStackPrice(state)
+	elseif action == "ACTION_MAX_NUM_STACKS" then
+		if state.stackSize and state.stackSize > 0 then
+			state.numStacks = max(min(floor(state.bagQuantity / state.stackSize), 5000), 1)
+			self:GetElement("numStacks.input")
+				:SetFocused(false)
+				:Draw()
+		end
+	elseif action == "ACTION_MAX_STACK_SIZE" then
+		local maxStack = ItemInfo.GetMaxStack(state.itemString) or 1
+		state.stackSize = max(min(state.bagQuantity, maxStack, 5000), 1)
+		self:GetElement("price"):SetStackSize(state.stackSize)
+		-- Keep numStacks within what the bags can supply at the new size
+		state.numStacks = max(min(state.numStacks or 1, floor(state.bagQuantity / state.stackSize)), 1)
+		self:GetElement("stackSize.input")
+			:SetFocused(false)
+			:Draw()
+		self:GetElement("numStacks.input")
+			:SetFocused(false)
+			:Draw()
+		self:_RescalePerStackPrice(state)
 	elseif action == "ACTION_SAVE_CLICKED" then
 		local bid, buyout, perItem = self:GetElement("price"):GetPrices()
 		local duration = Table.KeyByValue(AuctionHouse.DURATIONS, self:GetElement("duration.toggle"):GetValue())
-		self:_SendActionScript("OnSaveClicked", bid, buyout, perItem, duration)
+		self:_SendActionScript("OnSaveClicked", bid, buyout, perItem, duration, state.numStacks, state.stackSize)
 		manager:ProcessAction("ACTION_CLOSE_DIALOG")
 	else
 		error("Unknown action: "..tostring(action))
 	end
+end
+
+---Rescales the per-stack price from the per-item original when the price is shown per stack.
+function AuctioningEditDialog.__private:_RescalePerStackPrice(state)
+	if not state.stackSize then
+		return
+	end
+	local _, _, perItem = self:GetElement("price"):GetPrices()
+	if perItem then
+		-- Per-item price is independent of the stack size, nothing to rescale
+		return
+	end
+	local bid = self._originalBid * state.stackSize
+	local buyout = self._originalBuyout * state.stackSize
+	self:GetElement("price"):SetAuction(state.itemString, bid, buyout, state.numStacks, state.stackSize)
 end

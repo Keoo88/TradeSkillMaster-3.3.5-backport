@@ -254,6 +254,17 @@ function PostScan.ChangePostDetail(field, value)
 		postRow:SetField("itemBuyout", itemBuyout)
 	elseif field == "postTime" then
 		postRow:SetField("postTime", value)
+	elseif field == "numStacks" then
+		value = max(value, postRow:GetField("numProcessed"), 1)
+		postRow:SetField("numStacks", value)
+	elseif field == "stackSize" then
+		value = max(value, 1)
+		local maxStack = ItemInfo.GetMaxStack(postRow:GetField("itemString")) or value
+		value = min(value, maxStack)
+		-- Keep the per-item price; recompute the per-stack bid/buyout for the new stack size
+		postRow:SetField("stackSize", value)
+		postRow:SetField("bid", postRow:GetField("itemBid") * value)
+		postRow:SetField("buyout", postRow:GetField("itemBuyout") * value)
 	else
 		error("Invalid field: "..tostring(field))
 	end

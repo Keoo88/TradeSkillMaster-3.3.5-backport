@@ -840,10 +840,17 @@ function private.ActionHandler(manager, state, action, ...)
 			:SetAction("OnSaveClicked", "ACTION_EDIT_DIALOG_SAVED")
 		)
 	elseif action == "ACTION_EDIT_DIALOG_SAVED" then
-		local bid, buyout, perItem, duration = ...
+		local bid, buyout, perItem, duration, numStacks, stackSize = ...
 		assert(state.scanType == "POST" and state.currentRowItemString)
 		if buyout > 0 then
 			bid = min(bid, buyout)
+		end
+		-- Apply stack size first so the per-stack price math below uses the new size
+		if stackSize and stackSize ~= state.currentRowStackSize then
+			TSM.Auctioning.PostScan.ChangePostDetail("stackSize", stackSize)
+		end
+		if numStacks and numStacks ~= state.currentRowNumStacks then
+			TSM.Auctioning.PostScan.ChangePostDetail("numStacks", numStacks)
 		end
 		if duration ~= state.currentRowDuration then
 			TSM.Auctioning.PostScan.ChangePostDetail("postTime", duration)
