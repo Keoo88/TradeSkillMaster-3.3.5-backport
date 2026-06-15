@@ -7,6 +7,10 @@
 	     and the Templates/ + Texture/ folders (TSM uses native SetBackdrop/UIPanelButtonTemplate; the only
 	     bundled textures were consumed solely by the now-removed AtlasInfo + the unloaded Templates). -->
 
+	<!-- Prelude: sets __TSM_ClassicAPI_SKIP (no-op when the external !!!ClassicAPI addon is present) and an
+	     isolated private table so the bundled files never touch TSM's addon object. MUST be first. -->
+	<Script file="Util\_Prelude.lua" />
+
 	<!-- Foundation: Constants (WOW_PROJECT_*), ClassicAPI (Private.Tooltip/Void/TEXTURE_PATH + scan tooltip) -->
 	<Script file="Util\Constants.lua" />
 	<Script file="Util\ClassicAPI.lua" />

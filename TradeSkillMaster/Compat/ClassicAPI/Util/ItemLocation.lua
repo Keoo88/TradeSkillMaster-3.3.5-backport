@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local CreateFromMixins = CreateFromMixins
 
 local ItemLocation = ItemLocation or {}

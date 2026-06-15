@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local Enum = Enum or {}
 
 -- "Meta" tables haven't been added (MinValue, NumValues, MaxValue)

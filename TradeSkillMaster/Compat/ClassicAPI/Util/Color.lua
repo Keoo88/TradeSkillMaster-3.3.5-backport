@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local ColorMixin = ColorMixin or {}
 
 function CreateColor(r, g, b, a)

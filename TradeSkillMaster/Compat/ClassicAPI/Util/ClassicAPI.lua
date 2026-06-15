@@ -1,4 +1,5 @@
-local _, Private = ...
+if __TSM_ClassicAPI_SKIP then return end
+local Private = __TSM_ClassicAPI_Private
 
 -- Texture Path
 Private.TEXTURE_PATH = "Interface\\AddOns\\TradeSkillMaster\\Compat\\ClassicAPI\\Texture\\"

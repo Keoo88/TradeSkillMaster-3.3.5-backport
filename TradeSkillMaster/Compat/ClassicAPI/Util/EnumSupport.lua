@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local Enum = Enum
 
 -- These are used by internal functions, etc.

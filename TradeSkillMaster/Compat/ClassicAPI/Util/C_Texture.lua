@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local C_Texture = C_Texture or {}
 
 local _G = _G

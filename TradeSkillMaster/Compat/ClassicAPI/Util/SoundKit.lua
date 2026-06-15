@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local _ = SOUNDKIT or {}
 
 -- https://www.townlong-yak.com/framexml/3.4.5/Blizzard_SharedXML/SoundKitConstants.lua

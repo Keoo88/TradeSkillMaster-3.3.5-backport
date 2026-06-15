@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 if ( not C_Timer ) then
 	local _G = _G
 	local Type = type

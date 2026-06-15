@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local ExpansionLevel = GetAccountExpansionLevel()
 
 	WOW_PROJECT_MAINLINE = 1

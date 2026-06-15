@@ -1,4 +1,5 @@
-local _, Private = ...
+if __TSM_ClassicAPI_SKIP then return end
+local Private = __TSM_ClassicAPI_Private
 
 local UnitName = UnitName
 local AddFriend = AddFriend

@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 local CreateColor = CreateColor
 local ColorMixin = ColorMixin

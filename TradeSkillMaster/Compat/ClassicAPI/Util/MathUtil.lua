@@ -1,3 +1,4 @@
+if __TSM_ClassicAPI_SKIP then return end
 local ceil = math.ceil
 local floor = math.floor
 local random = math.random
