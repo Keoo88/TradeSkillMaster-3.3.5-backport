@@ -12,8 +12,8 @@
 ## Category-ruRU: Лоты
 ## Category-zhCN: 拍卖
 ## Category-zhTW: 拍賣
-## Notes: Auction house and gold making addon. WotLK 3.3.5a backport by Keoo - Discord: https://discord.gg/sKpJbUrsvR
-## Author: Keoo (Discord: https://discord.gg/sKpJbUrsvR)
+## Notes: Auction house and gold making addon. WotLK 3.3.5a backport by Keoo
+## Author: Keoo
 ## Version: v4.14.66
 ## SavedVariables: TradeSkillMasterDB, TSMItemInfoDB, TSMDebugDB, TSMLocaleOverride
 ## OptionalDeps: !!!ClassicAPI, ArkInventory, Auc-Advanced, Auctionator, OribosExchange, AuctionDB, CanIMogIt
