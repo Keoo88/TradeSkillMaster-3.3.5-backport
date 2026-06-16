@@ -1,0 +1,66 @@
+name: Bug Report
+description: Report a problem with the TSM 3.3.5a backport
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      placeholder: |
+         1. Open TSM
+         2. Go to Auctioning
+         3. Click Post Scan
+         4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error Message
+      description: Paste the full error from /tsm debug or the Blizzard error frame
+      render: text
+
+  - type: dropdown
+    id: server
+    attributes:
+      label: Server
+      description: Which server are you playing on?
+      options:
+        - Warmane Icecrown
+        - Warmane Lordaeron
+        - Warmane Frostmourne
+        - Other (specify below)
+    validations:
+      required: true
+
+  - type: input
+    id: other-server
+    attributes:
+      label: Other Server Name
+
+  - type: dropdown
+    id: locale
+    attributes:
+      label: Game Locale
+      options:
+        - enUS
+        - ruRU
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Screenshots, other addons installed, etc.
