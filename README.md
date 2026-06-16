@@ -113,9 +113,7 @@ based on your groups, and empty your mailbox with a single click.
    ```
 5. Enable it on the character-select AddOns screen and launch the game. Type `/tsm` to open.
 
-> **No separate polyfill needed** — the `!!!ClassicAPI` compatibility shim is now bundled inside the addon
-> (`Compat\ClassicAPI\`). It activates automatically only if the standalone `!!!ClassicAPI` addon is absent,
-> so it also coexists harmlessly if you already have that addon installed for other addons.
+> No extra addons are required — everything needed is bundled.
 
 ### Compatibility
 
@@ -127,7 +125,6 @@ based on your groups, and empty your mailbox with a single click.
 
 - Original addon: **TradeSkillMaster Team**
 - WotLK 3.3.5a backport: **Keoo**
-- Bundled compatibility shim: **!!!ClassicAPI** by Tsoukie (vendored into the addon — no separate install needed)
 
 ---
 
@@ -218,9 +215,7 @@ based on your groups, and empty your mailbox with a single click.
    ```
 5. Включите его на экране выбора персонажа и запустите игру. Введите `/tsm`, чтобы открыть.
 
-> **Отдельный полифилл не нужен** — шим совместимости `!!!ClassicAPI` теперь встроен в аддон
-> (`Compat\ClassicAPI\`). Он активируется автоматически, только если отдельного аддона `!!!ClassicAPI` нет,
-> и безвредно сосуществует, если этот аддон уже установлен для других аддонов.
+> Дополнительные аддоны не нужны — всё необходимое уже встроено.
 
 ### Совместимость
 
@@ -232,4 +227,3 @@ based on your groups, and empty your mailbox with a single click.
 
 - Оригинальный аддон: **Команда TradeSkillMaster**
 - Бэкпорт под WotLK 3.3.5a: **Keoo**
-- Встроенный шим совместимости: **!!!ClassicAPI** от Tsoukie (вшит в аддон — отдельная установка не нужна)
