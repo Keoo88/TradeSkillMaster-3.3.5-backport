@@ -117,8 +117,8 @@ based on your groups, and empty your mailbox with a single click.
 
 ### Compatibility
 
-- Built and tested on **WoW 3.3.5a** (Interface `30300`).
-- Should work on any WotLK 3.3.5a private server (developed on Warmane).
+- Built and tested on **Warmane** (WoW 3.3.5a, Interface `30300`).
+- Developed exclusively for **Warmane**. I am not responsible for functionality on other servers.
 
 <a name="credits"></a>
 ### Credits
@@ -219,8 +219,8 @@ based on your groups, and empty your mailbox with a single click.
 
 ### Совместимость
 
-- Собрано и протестировано на **WoW 3.3.5a** (Interface `30300`).
-- Должно работать на любом WotLK 3.3.5a приватном сервере (разработка велась на Warmane).
+- Собрано и протестировано на **Warmane** (WoW 3.3.5a, Interface `30300`).
+- Разрабатывалось исключительно для **Warmane**. За работоспособность на других серверах ответственности не несу.
 
 <a name="благодарности"></a>
 ### Благодарности
