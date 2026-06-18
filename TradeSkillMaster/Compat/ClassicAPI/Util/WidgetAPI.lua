@@ -200,6 +200,19 @@ UIObject = {
 			-- Incomplete, placeholder, potentially impossible to implement
 			Self._IgnoreParentScale = Ignore
 		end,
+
+		-- SetClipsChildren / DoesClipChildren do not exist on 3.3.5 frames (modern API).
+		-- Modern TSM UI (e.g. List scroll frames in List.lua) calls SetClipsChildren and
+		-- crashed with "attempt to call method 'SetClipsChildren' (a nil value)" when
+		-- opening the Auction House frame. Provide a state-storing placeholder; actual
+		-- child clipping is already handled natively via ScrollFrame:SetScrollChild.
+		SetClipsChildren = function(Self, Clip)
+			Self._ClipsChildren = Clip and true or false
+		end,
+
+		DoesClipChildren = function(Self)
+			return Self._ClipsChildren or false
+		end,
 	},
 
 	Region = {

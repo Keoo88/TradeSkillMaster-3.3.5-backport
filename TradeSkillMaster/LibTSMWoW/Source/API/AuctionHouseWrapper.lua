@@ -1199,3 +1199,4 @@ function private.PendingAutoOwnedFutureOnDone()
 	private.pendingAutoOwnedAuctionsFuture:GetValue()
 	private.pendingAutoOwnedAuctionsFuture = nil
 end
+

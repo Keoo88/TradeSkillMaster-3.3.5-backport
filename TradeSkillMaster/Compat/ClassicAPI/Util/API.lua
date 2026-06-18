@@ -91,9 +91,31 @@ function securecallfunction(Func, ...)
 	return SecureCall(Func, ...)
 end
 
-function GetAddOnEnableState(Character, Index)
-	-- Can't get per-char addons, doing what we can.
-	local _, _, _, Enabled, Loadable = GetAddOnInfo(Index)
+function GetAddOnEnableState(Arg1, Arg2)
+	-- This shim overrides the native API to emulate the modern signature
+	-- GetAddOnEnableState(addonNameOrIndex, character). The old code assumed the
+	-- legacy WotLK order (character, index), so modern addons (e.g. FrameSort)
+	-- that pass the addon name first left the index nil and crashed inside
+	-- GetAddOnInfo(nil) ("Usage: GetAddOnInfo(index or name)"). Resolve whichever
+	-- argument actually points at an installed addon so both orders are safe, and
+	-- never call GetAddOnInfo with nil. Per-char state isn't available on 3.3.5.
+	local function ResolveAddon(Value)
+		if ( Value == nil or Value == "" ) then
+			return nil
+		end
+		if ( type(Value) == "number" ) then
+			return Value
+		end
+		local Ok, Name = PCall(GetAddOnInfo, Value)
+		return (Ok and Name) and Value or nil
+	end
+
+	local Addon = ResolveAddon(Arg1) or ResolveAddon(Arg2)
+	if ( Addon == nil ) then
+		return 0
+	end
+
+	local _, _, _, Enabled = GetAddOnInfo(Addon)
 	return (Enabled) and 2 or 0
 end
 

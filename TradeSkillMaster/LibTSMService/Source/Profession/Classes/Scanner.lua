@@ -858,15 +858,11 @@ function private.BulkInsertMats(craftString)
 		end
 	end
 
-	if (LibTSMService.IsPandaClassic() or LibTSMService.IsWrathClassic()) and TradeSkill.IsEnchant(spellIdOrIndex) then
-		-- Add a vellum to the list of mats
-		local vellumItemString = Scanner.GetVellumItemString(craftString)
-		if vellumItemString then
-			private.matQuantitiesTemp[vellumItemString] = 1
-		else
-			haveInvalidMats = true
-		end
-	end
+	-- 3.3.5a: a vellum is NOT a crafting reagent. On WotLK an enchant is cast onto a target - either an
+	-- equipped item or an Enchanting Vellum in the bags (clicking the vellum with the enchant cursor turns
+	-- it into a sellable scroll). The vellum is consumed only as that optional target, so it must not be a
+	-- required material or enchants become uncraftable without owning vellums. The optional vellum-to-scroll
+	-- step is still handled at craft time by ProfessionUtil.Craft's useVellum path.
 
 	if haveInvalidMats then
 		return false

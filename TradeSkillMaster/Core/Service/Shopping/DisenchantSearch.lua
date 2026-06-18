@@ -27,6 +27,12 @@ local AuctionSearchContext = TSM.LibTSMService:IncludeClassType("AuctionSearchCo
 -- aren't worth a third query.
 local SLOWSCAN_MIN_QUALITY = 2
 
+-- 3.3.5a hard cap: no item exists above ilvl 284 (ICC 25H gear), so clamp the
+-- user's configured max DE search level. Guards against garbage/typo input in
+-- the settings (e.g. 9999) producing pointless filter passes on impossible
+-- levels. The min level is left untouched (user's choice).
+local MAX_DE_ITEM_LEVEL = 284
+
 -- Native scan engine constants — ported from Core/UI/AuctionUI/FullScan.lua
 -- StartPagedScan. Bypasses AuctionScanManager/Query/Scanner pipeline entirely
 -- and drives QueryAuctionItems(page=N) directly, with a bypass-throttle probe
@@ -482,8 +488,9 @@ function private.ShouldInclude(itemString, minBuyout)
 		return false
 	end
 
+	local maxLevel = math.min(private.settings.maxDeSearchLvl, MAX_DE_ITEM_LEVEL)
 	local itemLevel = ItemInfo.GetItemLevel(itemString) or -1
-	if itemLevel < private.settings.minDeSearchLvl or itemLevel > private.settings.maxDeSearchLvl then
+	if itemLevel < private.settings.minDeSearchLvl or itemLevel > maxLevel then
 		return false
 	end
 
@@ -499,8 +506,9 @@ function private.ShouldIncludeDebug(itemString, minBuyout)
 	if not ItemInfo.IsDisenchantable(itemString) then
 		return "not_de"
 	end
+	local maxLevel = math.min(private.settings.maxDeSearchLvl, MAX_DE_ITEM_LEVEL)
 	local itemLevel = ItemInfo.GetItemLevel(itemString) or -1
-	if itemLevel < private.settings.minDeSearchLvl or itemLevel > private.settings.maxDeSearchLvl then
+	if itemLevel < private.settings.minDeSearchLvl or itemLevel > maxLevel then
 		return "bad_level"
 	end
 	local disenchantValue = CustomString.GetSourceValue("Destroy", itemString)
