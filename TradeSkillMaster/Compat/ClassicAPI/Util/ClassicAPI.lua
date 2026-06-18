@@ -43,6 +43,25 @@ function Private.Zero()
 	return 0
 end
 
+--[[ SAFETY STUBS ]]
+-- Modern API namespaces that do not exist on 3.3.5a. TSM only reaches these
+-- through short-circuit guards today, but defining inert stubs removes the
+-- fragility if any call site forgets the guard. We never override an existing
+-- definition (standalone !!!ClassicAPI addon or a real namespace), and we reuse
+-- the shared Private.* helpers so return types stay consistent.
+
+-- C_PetJournal.GetNumPets() -> numPets, numOwned. No pet journal on 3.3.5a.
+_G.C_PetJournal = _G.C_PetJournal or {}
+if ( not _G.C_PetJournal.GetNumPets ) then
+	_G.C_PetJournal.GetNumPets = function() return 0, 0 end
+end
+
+-- C_Seasons.HasActiveSeason() -> bool. WotLK realms are never seasonal.
+_G.C_Seasons = _G.C_Seasons or {}
+if ( not _G.C_Seasons.HasActiveSeason ) then
+	_G.C_Seasons.HasActiveSeason = Private.False
+end
+
 --[[ MISCELLANEOUS ]]
 
 -- [LFD_ERROR_FIX] Workaround long-standing client/server error.

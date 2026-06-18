@@ -410,5 +410,11 @@ Enum.MountType = {
 	Ground = 0,
 }
 
+-- SeasonID does not exist on 3.3.5a. TSM gates seasonal code behind
+-- C_Seasons.HasActiveSeason() (stubbed to false), but some call sites index
+-- Enum.SeasonID.* directly; an empty table prevents an "index a nil value"
+-- error without enabling any seasonal path. Never override a real definition.
+Enum.SeasonID = Enum.SeasonID or {}
+
 -- Global
 _G.Enum = Enum
