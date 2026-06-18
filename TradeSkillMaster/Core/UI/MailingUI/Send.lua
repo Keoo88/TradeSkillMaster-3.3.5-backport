@@ -22,6 +22,7 @@ local DefaultUI = TSM.LibTSMWoW:Include("UI.DefaultUI")
 local UIElements = TSM.LibTSMUI:Include("Util.UIElements")
 local UIUtils = TSM.LibTSMUI:Include("Util.UIUtils")
 local Inbox = TSM.LibTSMWoW:Include("API.Inbox")
+local ClientInfo = TSM.LibTSMWoW:Include("Util.ClientInfo")
 local Reactive = TSM.LibTSMUtil:Include("Reactive")
 local UIManager = TSM.LibTSMUtil:IncludeClassType("UIManager")
 local private = {
@@ -418,11 +419,20 @@ function private.DragBoxOnItemRecieve(frame, button)
 	local _, _, subType = GetCursorInfo()
 	local itemString = ItemString.Get(subType)
 	local stackSize = nil
+	-- 3.3.5: the slotDB "isBound" flag is unreliable here (it ends up true for many
+	-- perfectly mailable items, including account-bound ones), so filtering on it
+	-- dropped account-bound items from drag-and-drop: stackSize stayed nil and nothing
+	-- was added to the send list (regular unbound items still worked). Mirror
+	-- BagTracking.GetNumMailable / CreateQueryBagsAuctionable and only apply the
+	-- isBound filter on clients that actually report it; account-bound items are
+	-- mailable to your own characters.
 	local query = BagTracking.CreateQueryBags()
 		:OrderBy("slotId", true)
 		:Select("bag", "slot", "quantity")
-		:Equal("isBound", false)
 		:Equal("itemString", itemString)
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Equal("isBound", false)
+	end
 	for _, bag, slot, quantity in query:Iterator() do
 		if Container.IsBagSlotLocked(bag, slot) then
 			stackSize = quantity
