@@ -40,7 +40,12 @@ function List:__init()
 	self._hScrollFrame:SetPoint("TOPLEFT")
 	-- No BOTTOMRIGHT anchor тАФ size set explicitly in Draw() so GetWidth/Height work in 3.3.5
 	self._hScrollFrame:EnableMouseWheel(true)
-	self._hScrollFrame:SetClipsChildren(true)
+	-- 3.3.5: SetClipsChildren only exists on some ClassicAPI builds. Our bundled shim
+	-- adds it, but a standalone !!!ClassicAPI (which makes the bundled one skip) may not.
+	-- ScrollFrames already clip their scroll child to their bounds, so guard the call.
+	if self._hScrollFrame.SetClipsChildren then
+		self._hScrollFrame:SetClipsChildren(true)
+	end
 	self._hScrollFrame:TSMSetScript("OnUpdate", self:__closure("_HScrollFrameOnUpdate"))
 	self._hScrollFrame:TSMSetScript("OnMouseWheel", self:__closure("_FrameOnMouseWheel"))
 
@@ -52,7 +57,9 @@ function List:__init()
 	self._vScrollFrame:SetPoint("TOPLEFT")
 	-- No BOTTOMRIGHT anchor тАФ size set explicitly in Draw()
 	self._vScrollFrame:EnableMouseWheel(true)
-	self._vScrollFrame:SetClipsChildren(true)
+	if self._vScrollFrame.SetClipsChildren then
+		self._vScrollFrame:SetClipsChildren(true)
+	end
 	self._vScrollFrame:TSMSetScript("OnUpdate", self:__closure("_VScrollFrameOnUpdate"))
 	self._vScrollFrame:TSMSetScript("OnMouseWheel", self:__closure("_FrameOnMouseWheel"))
 
