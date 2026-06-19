@@ -25,6 +25,7 @@ local GroupImport = TSM.LibTSMTypes:IncludeClassType("GroupImport")
 local ItemInfo = TSM.LibTSMService:Include("Item.ItemInfo")
 local ItemFilter = TSM.LibTSMService:IncludeClassType("ItemFilter")
 local BagTracking = TSM.LibTSMService:Include("Inventory.BagTracking")
+local ClientInfo = TSM.LibTSMWoW:Include("Util.ClientInfo")
 local UIElements = TSM.LibTSMUI:Include("Util.UIElements")
 local UIUtils = TSM.LibTSMUI:Include("Util.UIUtils")
 local Reactive = TSM.LibTSMUtil:Include("Reactive")
@@ -1753,10 +1754,27 @@ local function GetTextureFieldTypeAndDefault()
 end
 
 function private.CreateUngroupedBagItemQuery()
+	-- 3.3.5: the login/BAG_UPDATE events for non-backpack bags are unreliable, so the
+	-- slotDB can be empty even when the bags are full (e.g. right after /reload). Unlike
+	-- the Auctioning post scan, this UI never forced a rescan, so the Ungrouped list came
+	-- up empty. Force a synchronous rescan so the bag contents are present.
+	if not ClientInfo.IsRetail() then
+		BagTracking.RescanAllBags()
+	end
 	local textureType, unknownTexture = GetTextureFieldTypeAndDefault()
-	return BagTracking.CreateQueryBags()
+	local query = BagTracking.CreateQueryBags()
 		:Select("ungroupedItemString", "texture", "coloredItemName")
-		:Equal("isBound", false)
+	-- 3.3.5: the native container API has no reliable bound flag, so the slotDB
+	-- "isBound" field is unreliable here (it ends up true for many perfectly
+	-- tradeable non-white items, which wrongly emptied the Ungrouped list).
+	-- On clients that report it, filter on the stored flag; otherwise detect bound
+	-- items reliably via tooltip scanning so soulbound/BoA items stay out of the list.
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Equal("isBound", false)
+	else
+		query:Custom(BagTracking.FilterUnboundRow)
+	end
+	return query
 		:VirtualSmartMapField("ungroupedItemString", private.ungroupedItemStringSmartMap, "itemString")
 		:Distinct("ungroupedItemString")
 		:LeftJoin(Group.GetItemDBForJoin(), "ungroupedItemString", "itemString")

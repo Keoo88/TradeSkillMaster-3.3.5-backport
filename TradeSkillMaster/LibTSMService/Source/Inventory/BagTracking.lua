@@ -215,6 +215,17 @@ function BagTracking.CreateQueryBagsAuctionable()
 	return query:Custom(private.IsAuctionableQueryFilter)
 end
 
+---Row filter that returns whether the bag slot is NOT bound. On 3.3.5 the slotDB
+---"isBound" flag is unreliable, so callers that must exclude bound items (e.g. the
+---Groups "Ungrouped Items in Bags" list) can use this with query:Custom() to detect
+---soulbound / account-bound items via tooltip scanning instead.
+---@param row DatabaseRow
+---@return boolean
+function BagTracking.FilterUnboundRow(row)
+	local bag, slot = row:GetFields("bag", "slot")
+	return not TooltipScanning.IsBound(bag, slot)
+end
+
 ---Creates a query of bag slots with the specified item.
 ---@param itemString string The item string
 ---@return DatabaseQuery
