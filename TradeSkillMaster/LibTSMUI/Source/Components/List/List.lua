@@ -158,7 +158,7 @@ function List:Draw()
 	-- overflowing columns can be reached via the bottom scrollbar instead of being clipped.
 	if frameW > 0 then
 		self._hScrollFrame:SetWidth(frameW)
-		if self._hScrollFrame._ClipsChildren then
+		if type(self._hScrollFrame._ClipsChildren) == "table" then
 			self._hScrollFrame._ClipsChildren:SetWidth(frameW)
 		end
 	end
@@ -172,10 +172,10 @@ function List:Draw()
 		self._vScrollFrame:SetHeight(max(0, frameH - self:_GetVScrollTopOffset()))
 		self._content:SetHeight(frameH)
 		-- In 3.3.5 SetClipsChildren creates internal _ClipsChildren frame that needs explicit sizing
-		if self._hScrollFrame._ClipsChildren then
+		if type(self._hScrollFrame._ClipsChildren) == "table" then
 			self._hScrollFrame._ClipsChildren:SetHeight(frameH)
 		end
-		if self._vScrollFrame._ClipsChildren then
+		if type(self._vScrollFrame._ClipsChildren) == "table" then
 			self._vScrollFrame._ClipsChildren:SetHeight(frameH)
 		end
 	end
@@ -190,7 +190,7 @@ function List:Draw()
 	if contentWidth > 0 then
 		self._vScrollFrame:SetWidth(contentWidth)
 		self._content:SetWidth(contentWidth)
-		if self._vScrollFrame._ClipsChildren then
+		if type(self._vScrollFrame._ClipsChildren) == "table" then
 			self._vScrollFrame._ClipsChildren:SetWidth(contentWidth)
 		end
 	end
