@@ -399,6 +399,10 @@ end
 function ItemList.__protected:_HandleRowDraw(row)
 	local sectionIndex, dataIndex = self:_GetRowDataIndex(row)
 	if not dataIndex then
+		if not sectionIndex then
+			-- Stale/out-of-range row (list rebuilt mid-draw on 3.3.5a); nothing to draw
+			return
+		end
 		local headingText = self._headings[sectionIndex]
 		assert(headingText)
 		self:_DrawHeadingRowLayout(row)
@@ -503,6 +507,10 @@ function ItemList.__protected:_HandleRowClick(row, mouseButton)
 		return
 	end
 	local sectionIndex, dataIndex = self:_GetRowDataIndex(row)
+	if not dataIndex and not sectionIndex then
+		-- Stale/out-of-range row (list rebuilt on 3.3.5a); ignore the click
+		return
+	end
 	if dataIndex then
 		local itemString = self._itemString[self._data[dataIndex]]
 		if IsShiftKeyDown() or IsControlKeyDown() then
@@ -597,7 +605,10 @@ function ItemList.__private:_GetRowDataIndex(row)
 				sectionOffset = sectionOffset + numRows + 1
 			end
 		end
-		error("Failed to find data index")
+		-- On 3.3.5a the list can be rebuilt rapidly (e.g. while a profession scan streams in
+		-- recipes), so a mouseover/click can fire for a row whose visible data index is transiently
+		-- out of range. Rather than throwing a hard error, return nil so callers skip the stale row.
+		return nil, nil
 	else
 		return nil, visibleDataIndex
 	end

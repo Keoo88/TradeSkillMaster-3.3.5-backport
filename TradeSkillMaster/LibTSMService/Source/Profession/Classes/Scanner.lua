@@ -720,10 +720,40 @@ function private.ScanProfession()
 		private.dbPopulated = true
 	end
 	if haveInvalidRecipes or haveInvalidMats then
-		-- We'll try again
-		private.QueueProfessionScan()
-		return
-	elseif TradeSkill.GetType() ~= TradeSkill.TYPE.PLAYER then
+		-- We'll try again to give item info a chance to load. On 3.3.5a the client item cache
+		-- is filled lazily and item info for some recipe results / reagents may load slowly or
+		-- never resolve from the server. The original "all or nothing" logic re-queued forever
+		-- and never handed the recipe list to the app, so a single unresolved item left the
+		-- whole profession window permanently empty ("окно пустое / не грузится"). On classic
+		-- only, retry a bounded number of times and then proceed with whatever recipes did
+		-- resolve so the window still loads, while continuing to fill in the rest in the
+		-- background up to a cap.
+		if ClientInfo.HasFeature(ClientInfo.FEATURES.C_TRADE_SKILL_UI) then
+			private.QueueProfessionScan()
+			return
+		else
+			-- Track retries per profession so switching professions starts with a fresh grace period
+			if private.classicInvalidScanProfession ~= professionName then
+				private.classicInvalidScanProfession = professionName
+				private.classicInvalidScanRetries = 0
+			end
+			private.classicInvalidScanRetries = (private.classicInvalidScanRetries or 0) + 1
+			if private.classicInvalidScanRetries <= 8 then
+				-- still early - keep waiting for item info to load before showing anything
+				private.QueueProfessionScan()
+				return
+			end
+			if _G.TSMDBG then
+				_G.TSMDBG.Log("EnchScan", "proceeding with partial scan for '%s' after %d retries (some recipe items never resolved)", tostring(professionName), private.classicInvalidScanRetries)
+			end
+			-- Proceed with whatever resolved, but keep retrying in the background (up to a cap)
+			-- so the list fills in as more item info arrives, without scanning forever.
+			if private.classicInvalidScanRetries <= 20 then
+				private.QueueProfessionScan()
+			end
+		end
+	end
+	if TradeSkill.GetType() ~= TradeSkill.TYPE.PLAYER then
 		-- We don't want to store this profession in our application DB, so we're done
 		private.DoneScanning(scannedHash)
 		return
