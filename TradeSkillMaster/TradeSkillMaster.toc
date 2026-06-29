@@ -15,7 +15,7 @@
 ## Notes: Auction house and gold making addon. WotLK 3.3.5a backport by Keoo
 ## Author: Keoo
 ## Version: v4.14.66
-## SavedVariables: TradeSkillMasterDB, TSMItemInfoDB, TSMDebugDB, TSMLocaleOverride
+## SavedVariables: TradeSkillMasterDB, TSMItemInfoDB, TSMLocaleOverride
 ## OptionalDeps: !!!ClassicAPI, ArkInventory, Auc-Advanced, Auctionator, OribosExchange, AuctionDB, CanIMogIt
 ## X-Embeds: Ace3, LibDataBroker-1.1, LibDBIcon-1.0, LibRealmInfo, LibDeflate, LibSerialize, LibAHTab
 
@@ -76,8 +76,10 @@ Core\Service\Accounting\Money.lua
 Core\Service\Accounting\Auctions.lua
 Core\Service\Accounting\Transactions.lua
 Core\Service\Accounting\GoldTracker.lua
-Core\Service\Accounting\CraftingOrder.lua
-Core\Service\Accounting\Garrison.lua
+# 3.3.5 backport: ретейл-фичи, не работают на вотлке (нет C_CraftingOrders / гарнизонов).
+# Отключены — внешних ссылок на эти пакеты в коде нет. Quality.lua НЕ трогаем (есть прямые ссылки).
+# Core\Service\Accounting\CraftingOrder.lua
+# Core\Service\Accounting\Garrison.lua
 Core\Service\Accounting\Mail.lua
 Core\Service\Accounting\Merchant.lua
 Core\Service\Accounting\Trade.lua
@@ -233,5 +235,3 @@ Core\UI\BankingUI\Core.lua
 # Public APIs
 Core\API.lua
 
-# TSMDebug runtime commands (last — needs everything else loaded)
-Compat\TSMDebugCommands.lua
