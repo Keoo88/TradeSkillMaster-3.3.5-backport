@@ -76,7 +76,7 @@ function ItemInfoCache.__private:__init()
 		:AddNumberField("isCraftingReagent")
 		:AddNumberField("expansionId")
 		:AddNumberField("craftedQuality")
-		:AddTrigramIndex("name")
+		-- TSM-OPT: trigram-индекс по name убран ради экономии RAM (~19k строк). Поиск по имени в кэше идёт только через :Equal (точное совпадение), trigram здесь не использовался.
 		:Commit()
 	self._stream = Reactive.CreateStream()
 end
