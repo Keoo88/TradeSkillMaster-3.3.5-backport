@@ -30,6 +30,9 @@ local private = {
 		unitPrice = nil,
 		timestamp = nil,
 	},
+	-- 3.3.5 buyout-drop fix: GetTime() of the last auction query, used by the find
+	-- thread to wait out the server-side PlaceAuctionBid throttle before bidding.
+	lastQueryTime = 0,
 }
 AuctionHouse.DURATIONS = {
 	not LibTSMWoW.IsVanillaClassic() and AUCTION_DURATION_ONE or gsub(AUCTION_DURATION_ONE, "12", "2"),
@@ -72,6 +75,11 @@ AuctionHouse:OnModuleLoad(function()
 	else
 		hooksecurefunc("PostAuction", private.PostAuctionHook)
 		hooksecurefunc("PlaceAuctionBid", private.PlaceAuctionBidHook)
+		-- 3.3.5 buyout-drop fix: record the time of EVERY auction query (scan, find,
+		-- or native DE engine) so the find thread can wait out the server-side
+		-- PlaceAuctionBid throttle (~2s after any query) before bidding into the
+		-- current page. See AuctionHouse.GetTimeSinceLastQuery().
+		hooksecurefunc("QueryAuctionItems", private.QueryAuctionItemsHook)
 	end
 end)
 
@@ -435,6 +443,22 @@ end
 function AuctionHouse.GetExtraBrowseInfo(itemKey)
 	assert(ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE))
 	return C_AuctionHouse.GetExtraBrowseInfo(itemKey)
+end
+
+---Records the time of the last auction query (classic only).
+function private.QueryAuctionItemsHook()
+	private.lastQueryTime = GetTime()
+end
+
+---Seconds elapsed since the last auction query was sent (classic only).
+---Returns a very large number when no query has been sent yet, so callers that
+---compare against a small throttle window treat "never queried" as "settled".
+---@return number
+function AuctionHouse.GetTimeSinceLastQuery()
+	if not private.lastQueryTime or private.lastQueryTime == 0 then
+		return math.huge
+	end
+	return GetTime() - private.lastQueryTime
 end
 
 ---Whether or not the AH is ready for a query.

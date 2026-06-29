@@ -666,6 +666,34 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 			-- query. (Previously gated on self._resolveSellers, i.e. Browse-only; the
 			-- per-item-query fallback below still runs only when the lot is not on the
 			-- current live page.)
+			-- 3.3.5 buyout-drop fix: this is the path the DE / shopping scan actually
+			-- hits on Warmane. getAll is rate-limited (~15 min CD), so the scan almost
+			-- always runs the slowscan/per-class queries and the clicked lot is found on
+			-- the current live page here. If the scan queried recently (still running, or
+			-- just finished), the server-side PlaceAuctionBid throttle (~2s after ANY
+			-- auction query) is still active, so the subsequent click-bid into this list
+			-- is silently dropped (no event, no gold, 5s timeout) -> the intermittent
+			-- "находит, а покупается через раз". Wait the throttle out before returning
+			-- the index, exactly like the per-item-query fallback below already does.
+			-- A settled / completed scan (no recent query) clears both checks instantly,
+			-- so the common case keeps returning with no added delay.
+			local BID_THROTTLE = 2
+			if not AuctionHouse.CanSendQuery() or AuctionHouse.GetTimeSinceLastQuery() < BID_THROTTLE then
+				local settleStart = GetTime and GetTime() or 0
+				while not AuctionHouse.CanSendQuery() do
+					Threading.Yield(true)
+					if self._cancelled then
+						return nil
+					end
+					if (GetTime and GetTime() or 0) - settleStart > 3 then
+						break
+					end
+				end
+				local remaining = BID_THROTTLE - AuctionHouse.GetTimeSinceLastQuery()
+				if remaining > 0 then
+					Threading.Sleep(remaining)
+				end
+			end
 			return self._findResult
 		end
 
