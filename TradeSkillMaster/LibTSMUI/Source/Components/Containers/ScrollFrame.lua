@@ -35,7 +35,11 @@ function ScrollFrame:__init()
 	self._background:Hide()
 
 	frame:EnableMouseWheel(true)
-	frame:SetClipsChildren(true)
+	-- 3.3.5: SetClipsChildren is not guaranteed (standalone !!!ClassicAPI may lack it). ScrollFrames
+	-- already clip their scroll child to their bounds, so guard the call instead of erroring.
+	if frame.SetClipsChildren then
+		frame:SetClipsChildren(true)
+	end
 	frame:TSMSetOnUpdate(self:__closure("_FrameOnUpdate"))
 	frame:TSMSetScript("OnMouseWheel", self:__closure("_FrameOnMouseWheel"))
 

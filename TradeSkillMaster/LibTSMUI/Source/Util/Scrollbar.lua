@@ -59,7 +59,12 @@ function Scrollbar.Create(parent, isHorizontal, cancellables)
 		scrollbar:SetPoint("BOTTOMRIGHT", -Theme.GetScrollbarMargin(), Theme.GetScrollbarMargin())
 	end
 	scrollbar:SetValueStep(1)
-	scrollbar:SetObeyStepOnDrag(true)
+	-- 3.3.5: Slider:SetObeyStepOnDrag does not exist (added in later clients). Without it the
+	-- scrollbar simply isn't snapped to the value step while dragging, which is harmless. Guard
+	-- the call so the whole scrollbar (and its parent List) still gets created on WotLK.
+	if scrollbar.SetObeyStepOnDrag then
+		scrollbar:SetObeyStepOnDrag(true)
+	end
 	scrollbar:TSMSetScript("OnShow", private.ScrollbarOnLeave)
 	scrollbar:TSMSetScript("OnHide", private.ScrollbarOnMouseUp)
 	scrollbar:TSMSetScript("OnUpdate", private.ScrollbarOnUpdate)

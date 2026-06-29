@@ -134,7 +134,17 @@ function ApplicationFrame:Release()
 	self._contentFrame = nil
 	self._contextTable = nil
 	self._defaultContextTable = nil
-	self:_GetBaseFrame():SetResizeBounds(0, 0, 0, 0)
+	-- 3.3.5: Frame:SetResizeBounds does not exist (added in later clients). Guard the reset on
+	-- Release so closing the window doesn't error (which cascaded into MainUI assertion failures).
+	local baseFrame = self:_GetBaseFrame()
+	if baseFrame.SetResizeBounds then
+		baseFrame:SetResizeBounds(0, 0, 0, 0)
+	elseif baseFrame.SetMinResize then
+		baseFrame:SetMinResize(0, 0)
+		if baseFrame.SetMaxResize then
+			baseFrame:SetMaxResize(0, 0)
+		end
+	end
 	self._isScaling = nil
 	self._isResizingWindow = nil
 	self._protected = nil

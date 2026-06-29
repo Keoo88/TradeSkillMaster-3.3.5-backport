@@ -27,7 +27,10 @@ function MultiLineInput:__init()
 	self.__super:__init(frame, self:_CreateEditBox(frame))
 
 	frame:EnableMouseWheel(true)
-	frame:SetClipsChildren(true)
+	-- 3.3.5: SetClipsChildren may not exist; ScrollFrames already clip their child, so guard it.
+	if frame.SetClipsChildren then
+		frame:SetClipsChildren(true)
+	end
 	frame:TSMSetOnUpdate(self:__closure("_FrameOnUpdate"))
 	frame:TSMSetScript("OnMouseWheel", self:__closure("_OnMouseWheel"))
 	frame:TSMSetScript("OnMouseUp", self:__closure("_OnMouseUp"))

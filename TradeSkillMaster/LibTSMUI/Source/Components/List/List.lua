@@ -592,6 +592,9 @@ function List.__private:_FrameOnMouseWheel(frame, direction)
 end
 
 function List.__private:_VScrollFrameOnUpdate()
+	if not self._hScrollbar or not self._vScrollbar then
+		return
+	end
 	local rOffset = max(self._hContent:GetWidth() - self._hScrollFrame:GetWidth() - self._hScrollbar:GetValue(), 0)
 	if (self._vScrollFrame:IsMouseOver(0, 0, 0, -rOffset) and self:_GetMaxVScroll() > 1) or self._vScrollbar.dragging then
 		self._vScrollbar:Show()
@@ -601,6 +604,9 @@ function List.__private:_VScrollFrameOnUpdate()
 end
 
 function List.__private:_HScrollFrameOnUpdate()
+	if not self._hScrollbar then
+		return
+	end
 	if (self._hScrollFrame:IsMouseOver() and self:_GetMaxHScroll() > 1) or self._hScrollbar.dragging then
 		self._hScrollbar:Show()
 	else

@@ -31,7 +31,10 @@ SyntaxInput:_ExtendStateSchema()
 function SyntaxInput:__init()
 	local frame = self:_CreateScrollFrame()
 	frame:EnableMouseWheel(true)
-	frame:SetClipsChildren(true)
+	-- 3.3.5: SetClipsChildren may not exist; ScrollFrames already clip their child, so guard it.
+	if frame.SetClipsChildren then
+		frame:SetClipsChildren(true)
+	end
 	self._editBox = self:_CreateEditBox(frame)
 	frame:SetScrollChild(self._editBox)
 

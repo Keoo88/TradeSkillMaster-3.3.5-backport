@@ -74,7 +74,13 @@ function OverlayApplicationFrame:Release()
 	self._contentFrame = nil
 	self._contextTable = nil
 	self._defaultContextTable = nil
-	self:_GetBaseFrame():SetResizeBounds(0, 0)
+	-- 3.3.5: Frame:SetResizeBounds does not exist (added in later clients); guard on Release.
+	local baseFrame = self:_GetBaseFrame()
+	if baseFrame.SetResizeBounds then
+		baseFrame:SetResizeBounds(0, 0)
+	elseif baseFrame.SetMinResize then
+		baseFrame:SetMinResize(0, 0)
+	end
 	self.__super:Release()
 end
 

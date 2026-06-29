@@ -327,7 +327,14 @@ function ScrollTable.__protected:_CreateHeaderCell(info, noSubscribe)
 	if info.titleIcon then
 		minWidth = max(minWidth, TextureAtlas.GetWidth(info.titleIcon))
 	end
-	cell:SetResizeBounds(minWidth, 0)
+	-- 3.3.5: Frame:SetResizeBounds does not exist (added in later clients). It only enforces a
+	-- minimum drag-resize width for the header cell, which is non-essential. Guard so the whole
+	-- scroll table (profession/ledger/auction lists) still builds on WotLK.
+	if cell.SetResizeBounds then
+		cell:SetResizeBounds(minWidth, 0)
+	elseif cell.SetMinResize then
+		cell:SetMinResize(minWidth, 0)
+	end
 
 	local resizerButton = self:_CreateButton(cell)
 	cell.resizerButton = resizerButton
