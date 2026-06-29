@@ -274,7 +274,9 @@ function private.SendMail(recipient, subject, body, money, noItem)
 		tostring(recipient), tostring(subject), tostring(body), tostring(money), tostring(noItem)) end
 	SendMail(recipient, subject, body)
 
-	if Threading.WaitForEvent("MAIL_SUCCESS", "MAIL_FAILED") == "MAIL_SUCCESS" then
+	-- 3.3.5: успешная отправка шлёт MAIL_SEND_SUCCESS, а не ретейловое MAIL_SUCCESS.
+	local sendSuccessEvent = ClientInfo.IsRetail() and "MAIL_SUCCESS" or "MAIL_SEND_SUCCESS"
+	if Threading.WaitForEvent(sendSuccessEvent, "MAIL_FAILED") == sendSuccessEvent then
 		if noItem then
 			Threading.Sleep(0.5)
 		else

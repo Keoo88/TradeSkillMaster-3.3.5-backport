@@ -25,8 +25,12 @@ local private = {
 	lastCheck = nil,
 	moneyCollected = 0,
 	checkInboxTimer = nil,
+	lastMailAction = nil,
 }
 local MAIL_REFRESH_TIME = ClientInfo.IsRetail() and 15 or 60
+local IS_CLASSIC = not ClientInfo.IsRetail()
+-- 3.3.5/Warmane: нет реального IsCommandPending, держим мин. интервал между операциями
+local CLASSIC_MAIL_THROTTLE = 0.3
 local MANUAL_MAIL_TYPES = {
 	[Inbox.MAIL_TYPE.OTHER.GOLD_AND_ITEMS] = true,
 	[Inbox.MAIL_TYPE.OTHER.ITEMS] = true,
@@ -117,7 +121,15 @@ function private.OpenMailThread(autoRefresh, keepMoney, filterText, filterType)
 end
 
 function private.CanOpenMail()
-	return not C_Mail.IsCommandPending()
+	if C_Mail.IsCommandPending() then
+		return false
+	end
+	-- 3.3.5/Warmane: заглушка IsCommandPending всегда false, поэтому страхуемся
+	-- минимальным интервалом, иначе сервер глотает частые запросы и письма пропускаются.
+	if IS_CLASSIC and private.lastMailAction and (GetTime() - private.lastMailAction) < CLASSIC_MAIL_THROTTLE then
+		return false
+	end
+	return true
 end
 
 -- 3.3.5: нет CalculateTotalNumberOfFreeBagSlots, считаем сами по бэгам.
@@ -147,23 +159,30 @@ function private.OpenMails(mails, keepMoney, filterType)
 				-- Marks the mail as read
 				Inbox.GetText(index)
 				AutoLootMailItem(index)
+				private.lastMailAction = GetTime()
 				private.moneyCollected = private.moneyCollected + money
 
-				local event = nil
+				local needConfirm, isManualType = false, false
 				if money > 0 or numItems > 0 then
 					if mailType == Inbox.MAIL_TYPE.BUY.CRAFTING_ORDER or MANUAL_MAIL_TYPES[mailType] then
-						event = "MAIL_SUCCESS"
+						needConfirm, isManualType = true, true
 					elseif textCreated and mailType ~= Inbox.MAIL_TYPE.OTHER.TEMP_INVOICE then
 						-- Temporary invoices are not auto deleted
-						event = "CLOSE_INBOX_ITEM"
+						needConfirm = true
 					end
 				end
-				if event and Threading.WaitForEvent(event, "MAIL_FAILED") ~= "MAIL_FAILED" then
-					if message then
-						ChatMessage.PrintUser(message)
-					end
-					if textCreated and event == "MAIL_SUCCESS" then
-						private.DeleteEmptyMail(index)
+				if needConfirm then
+					-- 3.3.5/Warmane: события MAIL_SUCCESS / CLOSE_INBOX_ITEM не существуют (retail-only):
+					-- их регистрация падала/висла на первом же письме с золотом/вложением.
+					-- На классике ждём MAIL_INBOX_UPDATE — оно реально приходит после изъятия.
+					local confirmEvent = IS_CLASSIC and "MAIL_INBOX_UPDATE" or (isManualType and "MAIL_SUCCESS" or "CLOSE_INBOX_ITEM")
+					if Threading.WaitForEvent(confirmEvent, "MAIL_FAILED") ~= "MAIL_FAILED" then
+						if message then
+							ChatMessage.PrintUser(message)
+						end
+						if textCreated and isManualType then
+							private.DeleteEmptyMail(index)
+						end
 					end
 				end
 			end
