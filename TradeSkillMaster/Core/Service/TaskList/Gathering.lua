@@ -56,6 +56,7 @@ end
 
 function Gathering.OnEnable()
 	TSM.TaskList.RegisterTaskPool(private.ActiveTaskIterator)
+	if not (TSM.Crafting and TSM.Crafting.Gathering) then return end
 	private.query = TSM.Crafting.Gathering.CreateQuery()
 		:Select("itemString", "sourcesStr")
 		:GreaterThan("numNeed", 0)
@@ -70,6 +71,7 @@ end
 -- ============================================================================
 
 function private.PopulateTasks()
+	if not private.query then return end
 	local hash = private.query:Hash()
 	if hash == private.prevHash then
 		-- nothing changed

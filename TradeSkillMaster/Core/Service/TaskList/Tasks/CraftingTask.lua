@@ -58,10 +58,12 @@ end
 function CraftingTask.Acquire(self, doneHandler, category, profession)
 	self.__super:Acquire(doneHandler, category, format(L["%s Crafts"], profession))
 	self._profession = profession
+	if TSM.Crafting and TSM.Crafting.PlayerProfessions then
 	for _, _, prof, skillId in TSM.Crafting.PlayerProfessions.Iterator() do
 		if prof == profession and (not self._skillId or (self._skillId == -1 and skillId ~= -1)) then
 			self._skillId = skillId
 		end
+	end
 	end
 	private.activeTasks[self] = true
 end
@@ -107,13 +109,15 @@ end
 function CraftingTask.AddCraftString(self, craftString, quantity)
 	tinsert(self._craftStrings, craftString)
 	self._craftQuantity[craftString] = quantity
-	for _, itemString in TSM.Crafting.MatIterator(craftString) do
-		self._mats[itemString] = (self._mats[itemString] or 0) + 1
+	if TSM.Crafting then
+		for _, itemString in TSM.Crafting.MatIterator(craftString) do
+			self._mats[itemString] = (self._mats[itemString] or 0) + 1
+		end
 	end
 end
 
 function CraftingTask.OnMouseDown(self)
-	if self._buttonText == L["CRAFT"] then
+	if self._buttonText == L["CRAFT"] and TSM.Crafting then
 		local craftString = self._craftStrings[1]
 		local quantity = self._craftQuantity[craftString]
 		Log.Info("Preparing %s (%d)", craftString, quantity)
@@ -122,7 +126,7 @@ function CraftingTask.OnMouseDown(self)
 end
 
 function CraftingTask.OnButtonClick(self)
-	if self._buttonText == L["CRAFT"] then
+	if self._buttonText == L["CRAFT"] and TSM.Crafting then
 		local craftString = self._craftStrings[1]
 		local spellId = CraftString.GetSpellId(craftString)
 		local quantity = self._craftQuantity[craftString]
@@ -167,6 +171,7 @@ end
 -- ============================================================================
 
 function CraftingTask._UpdateState(self)
+	if not TSM.Crafting then return self:_SetButtonState(false, L["NEED MATS"]) end
 	self:_SortCraftStrings()
 	if TSM.Crafting.ProfessionUtil.GetNumCraftableFromDB(self._craftStrings[1]) == 0 then
 		-- don't have the mats to craft this
@@ -190,16 +195,19 @@ end
 function CraftingTask._RemoveCraftString(self, craftString)
 	assert(Table.RemoveByValue(self._craftStrings, craftString) == 1)
 	self._craftQuantity[craftString] = nil
-	for _, itemString in TSM.Crafting.MatIterator(craftString) do
-		self._mats[itemString] = self._mats[itemString] - 1
-		if self._mats[itemString] == 0 then
-			self._mats[itemString] = nil
+	if TSM.Crafting then
+		for _, itemString in TSM.Crafting.MatIterator(craftString) do
+			self._mats[itemString] = self._mats[itemString] - 1
+			if self._mats[itemString] == 0 then
+				self._mats[itemString] = nil
+			end
 		end
 	end
 end
 
 function CraftingTask._SortCraftStrings(self)
 	assert(not next(private.numCraftableTemp))
+	if not TSM.Crafting then return end
 	for _, craftString in ipairs(self._craftStrings) do
 		private.numCraftableTemp[craftString] = TSM.Crafting.ProfessionUtil.GetNumCraftableFromDB(craftString)
 	end
@@ -276,7 +284,7 @@ function private.SubTaskIterator(self, index)
 	if not craftString then
 		return
 	end
-	return index, TSM.Crafting.GetName(craftString).." ("..self._craftQuantity[craftString]..")"
+	return index, (TSM.Crafting and TSM.Crafting.GetName(craftString) or "?").." ("..self._craftQuantity[craftString]..")"
 end
 
 function private.CraftCompleteCallback(success, isDone)

@@ -1,0 +1,20 @@
+## Interface: 30300
+## Title: |cff00ff00TradeSkillMaster_Vendoring|r
+## Notes: Optional Vendoring module for TradeSkillMaster. Disable it in the AddOns list to free its memory.
+## Author: TSM Team (3.3.5 backport)
+## Version: v4.14.66
+## Dependency: TradeSkillMaster
+## X-Category: Auction House & Vendors
+
+Service\Core.lua
+Service\Buy.lua
+Service\Buyback.lua
+Service\Sell.lua
+Service\Groups.lua
+UI\VendoringUI_Core.lua
+UI\VendoringUI_Buy.lua
+UI\VendoringUI_Sell.lua
+UI\VendoringUI_Buyback.lua
+UI\VendoringUI_Groups.lua
+UI\MainUI_Operations_Vendoring.lua
+UI\MainUI_Settings_Vendoring.lua

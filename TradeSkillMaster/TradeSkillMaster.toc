@@ -71,45 +71,15 @@ TradeSkillMaster.lua
 Core\Service\Operations\Core.lua
 Core\Service\Groups\Core.lua
 Core\Service\Groups\Sync.lua
-Core\Service\Accounting\Core.lua
-Core\Service\Accounting\Money.lua
-Core\Service\Accounting\Auctions.lua
-Core\Service\Accounting\Transactions.lua
-Core\Service\Accounting\GoldTracker.lua
 # 3.3.5 backport: ретейл-фичи, не работают на вотлке (нет C_CraftingOrders / гарнизонов).
 # Отключены — внешних ссылок на эти пакеты в коде нет. Quality.lua НЕ трогаем (есть прямые ссылки).
-# Core\Service\Accounting\CraftingOrder.lua
-# Core\Service\Accounting\Garrison.lua
-Core\Service\Accounting\Mail.lua
-Core\Service\Accounting\Merchant.lua
-Core\Service\Accounting\Trade.lua
-Core\Service\Accounting\Sync.lua
 Core\Service\Auctioning\Core.lua
 Core\Service\Auctioning\CancelScan.lua
 Core\Service\Auctioning\Log.lua
 Core\Service\Auctioning\PostScan.lua
 Core\Service\Auctioning\SavedSearches.lua
 Core\Service\Auctioning\Util.lua
-Core\Service\Crafting\Core.lua
-Core\Service\Crafting\PlayerProfessions.lua
-Core\Service\Crafting\ProfessionScanner.lua
-Core\Service\Crafting\ProfessionUtil.lua
-Core\Service\Crafting\Cost.lua
-Core\Service\Crafting\Queue.lua
-Core\Service\Crafting\Gathering.lua
-Core\Service\Crafting\Sync.lua
-Core\Service\Crafting\Quality.lua
 Core\Service\Destroying\Core.lua
-Core\Service\Mailing\Core.lua
-Core\Service\Mailing\Inbox.lua
-Core\Service\Mailing\Open.lua
-Core\Service\Mailing\Send.lua
-Core\Service\Mailing\Groups.lua
-Core\Service\Vendoring\Core.lua
-Core\Service\Vendoring\Buy.lua
-Core\Service\Vendoring\Buyback.lua
-Core\Service\Vendoring\Sell.lua
-Core\Service\Vendoring\Groups.lua
 Core\Service\MyAuctions\Core.lua
 Core\Service\Sniper\Core.lua
 Core\Service\Sniper\BidSearch.lua
@@ -130,19 +100,11 @@ Core\Service\TaskList\Tasks\OpenMailTask.lua
 Core\Service\TaskList\Cooldowns.lua
 Core\Service\TaskList\Expirations.lua
 Core\Service\TaskList\Gathering.lua
-Core\Service\Banking\Core.lua
-Core\Service\Banking\Util.lua
-Core\Service\Banking\MoveContext.lua
-Core\Service\Banking\Warehousing.lua
-Core\Service\Banking\Mailing.lua
-Core\Service\Banking\Auctioning.lua
 Core\Service\AuctionDB\Core.lua
 Core\Service\Tooltip\Core.lua
 Core\Service\Tooltip\General.lua
-Core\Service\Tooltip\Accounting.lua
 Core\Service\Tooltip\AuctionDB.lua
 Core\Service\Tooltip\Auctioning.lua
-Core\Service\Tooltip\Crafting.lua
 Core\Service\Tooltip\Shopping.lua
 Core\Service\Tooltip\Sniper.lua
 Core\Service\Shopping\Core.lua
@@ -172,36 +134,12 @@ Core\UI\AuctionUI\FullScan.lua
 
 Core\UI\DestroyingUI\Core.lua
 
-Core\UI\CraftingUI\Core.lua
-Core\UI\CraftingUI\Crafting.lua
-Core\UI\CraftingUI\Gathering.lua
-Core\UI\CraftingUI\CraftingReports.lua
 
-Core\UI\MailingUI\Core.lua
-Core\UI\MailingUI\Inbox.lua
-Core\UI\MailingUI\Send.lua
-Core\UI\MailingUI\Groups.lua
-Core\UI\MailingUI\Other.lua
 
-Core\UI\VendoringUI\Core.lua
-Core\UI\VendoringUI\Buy.lua
-Core\UI\VendoringUI\Sell.lua
-Core\UI\VendoringUI\Buyback.lua
-Core\UI\VendoringUI\Groups.lua
 
 Core\UI\MainUI\Core.lua
 Core\UI\MainUI\Dashboard.lua
 
-Core\UI\MainUI\Ledger\Core.lua
-Core\UI\MainUI\Ledger\Inventory.lua
-Core\UI\MainUI\Ledger\Common\Core.lua
-Core\UI\MainUI\Ledger\Common\Transactions.lua
-Core\UI\MainUI\Ledger\Common\Other.lua
-Core\UI\MainUI\Ledger\Revenue\Core.lua
-Core\UI\MainUI\Ledger\Revenue\Resale.lua
-Core\UI\MainUI\Ledger\Expenses\Core.lua
-Core\UI\MainUI\Ledger\FailedAuctions\Core.lua
-Core\UI\MainUI\Ledger\Common\Auctions.lua
 
 Core\UI\MainUI\Groups.lua
 
@@ -209,28 +147,20 @@ Core\UI\MainUI\Operations\Core.lua
 Core\UI\MainUI\Operations\Auctioning.lua
 Core\UI\MainUI\Operations\Shopping.lua
 Core\UI\MainUI\Operations\Sniper.lua
-Core\UI\MainUI\Operations\Crafting.lua
-Core\UI\MainUI\Operations\Vendoring.lua
-Core\UI\MainUI\Operations\Mailing.lua
 Core\UI\MainUI\Operations\Warehousing.lua
 
 Core\UI\MainUI\Settings\Core.lua
 Core\UI\MainUI\Settings\General.lua
-Core\UI\MainUI\Settings\Accounting.lua
 Core\UI\MainUI\Settings\Appearance.lua
 Core\UI\MainUI\Settings\Auctioning.lua
 Core\UI\MainUI\Settings\Destroying.lua
-Core\UI\MainUI\Settings\Mailing.lua
 Core\UI\MainUI\Settings\CustomSources.lua
-Core\UI\MainUI\Settings\Crafting.lua
 Core\UI\MainUI\Settings\Macros.lua
 Core\UI\MainUI\Settings\Shopping.lua
-Core\UI\MainUI\Settings\Vendoring.lua
 Core\UI\MainUI\Settings\Tooltip.lua
 
 Core\UI\TaskListUI\Core.lua
 
-Core\UI\BankingUI\Core.lua
 
 # Public APIs
 Core\API.lua

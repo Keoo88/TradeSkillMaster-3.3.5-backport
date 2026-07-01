@@ -1,0 +1,24 @@
+## Interface: 30300
+## Title: |cff00ff00TradeSkillMaster_Crafting|r
+## Notes: Optional Crafting module for TradeSkillMaster. Disable it in the AddOns list to free its memory.
+## Author: TSM Team (3.3.5 backport)
+## Version: v4.14.66
+## Dependency: TradeSkillMaster
+## X-Category: Auction House & Vendors
+
+Service\Core.lua
+Service\PlayerProfessions.lua
+Service\ProfessionScanner.lua
+Service\ProfessionUtil.lua
+Service\Cost.lua
+Service\Queue.lua
+Service\Gathering.lua
+Service\Sync.lua
+Service\Quality.lua
+Tooltip\Crafting.lua
+UI\CraftingUI_Core.lua
+UI\CraftingUI_Crafting.lua
+UI\CraftingUI_Gathering.lua
+UI\CraftingUI_CraftingReports.lua
+UI\MainUI_Operations_Crafting.lua
+UI\MainUI_Settings_Crafting.lua

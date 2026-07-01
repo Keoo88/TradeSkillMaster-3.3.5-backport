@@ -228,17 +228,19 @@ function TSM.OnInitialize(settingsDB)
 	end
 
 	-- Accounting sources
-	CustomString.RegisterSource("Accounting", "AvgSell", L["Avg Sell Price"], TSM.Accounting.Transactions.GetAverageSalePrice, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "MaxSell", L["Max Sell Price"], TSM.Accounting.Transactions.GetMaxSalePrice, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "MinSell", L["Min Sell Price"], TSM.Accounting.Transactions.GetMinSalePrice, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "AvgBuy", L["Avg Buy Price"], TSM.Accounting.Transactions.GetAverageBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "SmartAvgBuy", L["Smart Avg Buy Price"], TSM.Accounting.Transactions.GetSmartAverageBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "MaxBuy", L["Max Buy Price"], TSM.Accounting.Transactions.GetMaxBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "MinBuy", L["Min Buy Price"], TSM.Accounting.Transactions.GetMinBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "NumExpires", L["Expires Since Last Sale"], TSM.Accounting.Auctions.GetNumExpiresSinceSale, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Accounting", "SaleRate", L["Sale Rate"], TSM.Accounting.GetSaleRate, CustomString.SOURCE_TYPE.NORMAL)
-	CustomStringFormat.SetFormat("NumExpires", CustomStringFormat.FORMAT.NUMBER)
-	CustomStringFormat.SetFormat("SaleRate", CustomStringFormat.FORMAT.NUMBER)
+	if TSM.Accounting then
+		CustomString.RegisterSource("Accounting", "AvgSell", L["Avg Sell Price"], TSM.Accounting.Transactions.GetAverageSalePrice, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MaxSell", L["Max Sell Price"], TSM.Accounting.Transactions.GetMaxSalePrice, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MinSell", L["Min Sell Price"], TSM.Accounting.Transactions.GetMinSalePrice, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "AvgBuy", L["Avg Buy Price"], TSM.Accounting.Transactions.GetAverageBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "SmartAvgBuy", L["Smart Avg Buy Price"], TSM.Accounting.Transactions.GetSmartAverageBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MaxBuy", L["Max Buy Price"], TSM.Accounting.Transactions.GetMaxBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MinBuy", L["Min Buy Price"], TSM.Accounting.Transactions.GetMinBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "NumExpires", L["Expires Since Last Sale"], TSM.Accounting.Auctions.GetNumExpiresSinceSale, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "SaleRate", L["Sale Rate"], TSM.Accounting.GetSaleRate, CustomString.SOURCE_TYPE.NORMAL)
+		CustomStringFormat.SetFormat("NumExpires", CustomStringFormat.FORMAT.NUMBER)
+		CustomStringFormat.SetFormat("SaleRate", CustomStringFormat.FORMAT.NUMBER)
+	end
 
 	-- AuctionDB sources
 	local function GetAuctionDBPriceFunc(key, isRegion)
@@ -276,12 +278,15 @@ function TSM.OnInitialize(settingsDB)
 	CustomStringFormat.SetFormat("DBRegionSoldPerDay", CustomStringFormat.FORMAT.NUMBER)
 
 	-- Crafting sources
-	local function GetDestroyValue(itemString)
-		return TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
+	if TSM.Crafting then
+		local function GetDestroyValue(itemString)
+			return TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
+		end
+		CustomString.RegisterSource("Crafting", "Destroy", L["Destroy Value"], GetDestroyValue, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Crafting", "Crafting", L["Crafting Cost"], TSM.Crafting.Cost.GetLowestCostByItem, CustomString.SOURCE_TYPE.VOLATILE)
+		CustomString.RegisterSource("Crafting", "MatPrice", L["Crafting Material Cost"], TSM.Crafting.Cost.GetMatCost, CustomString.SOURCE_TYPE.VOLATILE)
+		CustomString.InvalidateCache("Destroy")
 	end
-	CustomString.RegisterSource("Crafting", "Destroy", L["Destroy Value"], GetDestroyValue, CustomString.SOURCE_TYPE.NORMAL)
-	CustomString.RegisterSource("Crafting", "Crafting", L["Crafting Cost"], TSM.Crafting.Cost.GetLowestCostByItem, CustomString.SOURCE_TYPE.VOLATILE)
-	CustomString.RegisterSource("Crafting", "MatPrice", L["Crafting Material Cost"], TSM.Crafting.Cost.GetMatCost, CustomString.SOURCE_TYPE.VOLATILE)
 
 	-- Operation-based price sources
 	local function GetAuctioningOpMin(itemString)

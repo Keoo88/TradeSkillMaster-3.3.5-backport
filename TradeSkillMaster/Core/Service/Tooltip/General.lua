@@ -173,6 +173,7 @@ function private.PopulateFullDestroyLines(tooltip, itemString)
 		tooltip:EndSection()
 		return
 	end
+	if not TSM.Crafting then return nil, nil end
 	local value, method = TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
 	if not value then
 		return nil, nil
@@ -223,7 +224,7 @@ function private.PopulateSimpleDestroyLines(tooltip, itemString)
 		-- Example tooltip
 		value = 20
 		method = Conversion.METHOD.PROSPECT
-	else
+	elseif TSM.Crafting then
 		value, method = TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
 	end
 	if not value then

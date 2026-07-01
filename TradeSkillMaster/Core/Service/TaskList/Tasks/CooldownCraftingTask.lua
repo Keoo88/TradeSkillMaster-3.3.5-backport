@@ -27,10 +27,12 @@ function CooldownCraftingTask.__init(self)
 	self.__super:__init()
 	if not private.didModuleInit then
 		private.didModuleInit = true
-		private.settings = AddonSettings.GetDB():NewView()
-			:AddKey("char", "internalData", "craftingCooldowns")
-		TSM.Crafting.CreateIgnoredCooldownQuery()
-			:SetUpdateCallback(private.UpdateTasks)
+		if TSM.Crafting then
+			private.settings = AddonSettings.GetDB():NewView()
+				:AddKey("char", "internalData", "craftingCooldowns")
+			TSM.Crafting.CreateIgnoredCooldownQuery()
+				:SetUpdateCallback(private.UpdateTasks)
+		end
 	end
 end
 
@@ -49,7 +51,7 @@ function CooldownCraftingTask.CanHideSubTasks(self)
 end
 
 function CooldownCraftingTask.HideSubTask(self, index)
-	TSM.Crafting.IgnoreCooldown(self._craftStrings[index])
+	if TSM.Crafting then TSM.Crafting.IgnoreCooldown(self._craftStrings[index]) end
 end
 
 
@@ -64,7 +66,7 @@ function CooldownCraftingTask._UpdateState(self)
 		return result
 	end
 	for i = #self._craftStrings, 1, -1 do
-		if self:_IsOnCooldown(self._craftStrings[i]) or TSM.Crafting.IsCooldownIgnored(self._craftStrings[i]) then
+		if self:_IsOnCooldown(self._craftStrings[i]) or (TSM.Crafting and TSM.Crafting.IsCooldownIgnored(self._craftStrings[i])) then
 			self:_RemoveCraftString(self._craftStrings[i])
 		end
 	end

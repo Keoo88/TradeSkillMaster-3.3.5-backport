@@ -56,6 +56,7 @@ function SendMailTask.SetTarget(self, target)
 end
 
 function SendMailTask.OnButtonClick(self)
+	if not (TSM.Mailing and TSM.Mailing.Send) then return end -- Mailing module disabled
 	private.currentlySending = self
 	self._isSending = true
 	TSM.Mailing.Send.StartSending(private.SendCallback, self._target, "", "", 0, self:GetItems())

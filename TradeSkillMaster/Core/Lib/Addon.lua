@@ -117,7 +117,7 @@ do
 		if event == Lifecycle.EVENT.LOADED then
 			return private.DoInitialize(maxTime)
 		elseif event == Lifecycle.EVENT.LOGIN then
-			return private.DoEnable(maxTime)
+			return private.DoInitialize(maxTime) and private.DoEnable(maxTime)
 		elseif event == Lifecycle.EVENT.LOGOUT then
 			return private.DoDisable(maxTime)
 		else

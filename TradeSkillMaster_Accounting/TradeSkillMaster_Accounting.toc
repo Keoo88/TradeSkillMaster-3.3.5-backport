@@ -1,0 +1,31 @@
+## Interface: 30300
+## Title: |cff00ff00TradeSkillMaster_Accounting|r
+## Notes: Optional Accounting module for TradeSkillMaster. Disable it in the AddOns list to free its memory.
+## Author: TSM Team (3.3.5 backport)
+## Version: v4.14.66
+## Dependency: TradeSkillMaster
+## X-Category: Auction House & Vendors
+
+Service\Core.lua
+Service\Money.lua
+Service\Auctions.lua
+Service\Transactions.lua
+Service\GoldTracker.lua
+# Service\CraftingOrder.lua
+# Service\Garrison.lua
+Service\Mail.lua
+Service\Merchant.lua
+Service\Trade.lua
+Service\Sync.lua
+Tooltip\Accounting.lua
+UI\Ledger\Core.lua
+UI\Ledger\Inventory.lua
+UI\Ledger\Common\Core.lua
+UI\Ledger\Common\Transactions.lua
+UI\Ledger\Common\Other.lua
+UI\Ledger\Revenue\Core.lua
+UI\Ledger\Revenue\Resale.lua
+UI\Ledger\Expenses\Core.lua
+UI\Ledger\FailedAuctions\Core.lua
+UI\Ledger\Common\Auctions.lua
+UI\MainUI_Settings_Accounting.lua

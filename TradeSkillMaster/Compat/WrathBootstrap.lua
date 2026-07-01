@@ -725,3 +725,72 @@ do
 		_G.__tsmPlaySoundGuarded = true
 	end
 end
+
+-- ============================================================================
+-- ColorPickerFrame retail-API polyfills (GetColorAlpha / SetColorAlpha) +
+-- OpacitySliderFrame:SetValue nil guard.
+--
+-- Modern Ace3 (AceGUIWidget-ColorPicker, bundled in ElvUI) and helpers such as
+-- UltimateMouseCursor's SetupColorPickerAndShow assume the retail color-picker
+-- contract. On 3.3.5a ColorPickerFrame has no GetColorAlpha/SetColorAlpha, so
+-- their swatch/opacity callbacks throw:
+--   AceGUIWidget-ColorPicker.lua: attempt to call method 'GetColorAlpha' (a nil value)
+-- Separately, the stock OpacitySliderFrame:OnShow runs
+--   OpacitySliderFrame:SetValue(ColorPickerFrame.opacity)
+-- and when a retail-style caller opens the picker without seeding .opacity,
+-- SetValue(nil) raises "Usage: OpacitySliderFrame:SetValue(value)".
+--
+-- ColorPickerFrame / OpacitySliderFrame are global Blizzard frames created in
+-- FrameXML before any addon loads, so define-if-missing shims here fix every
+-- addon that relies on the retail contract. On 3.3.5a the opacity slider value
+-- equals the alpha that was set (OnShow assigns the slider directly from
+-- .opacity, no inversion), which matches what retail GetColorAlpha returns.
+-- ============================================================================
+
+do
+	local cpf = _G.ColorPickerFrame
+	if type(cpf) == "table" then
+		if not cpf.GetColorAlpha then
+			function cpf:GetColorAlpha()
+				if not self.hasOpacity then
+					return 1
+				end
+				local slider = _G.OpacitySliderFrame
+				local v = slider and slider.GetValue and slider:GetValue()
+				if type(v) ~= "number" then
+					v = self.opacity
+				end
+				if type(v) ~= "number" then
+					return 1
+				end
+				return v
+			end
+		end
+
+		if not cpf.SetColorAlpha then
+			function cpf:SetColorAlpha(alpha)
+				if type(alpha) ~= "number" then
+					return
+				end
+				self.hasOpacity = true
+				self.opacity = alpha
+				local slider = _G.OpacitySliderFrame
+				if slider and slider.SetValue then
+					slider:SetValue(alpha)
+				end
+			end
+		end
+	end
+
+	local slider = _G.OpacitySliderFrame
+	if slider and slider.SetValue and not slider.__tsmSetValueGuarded then
+		local baseSetValue = slider.SetValue
+		slider.SetValue = function(self, value, ...)
+			if type(value) ~= "number" then
+				value = 1
+			end
+			return baseSetValue(self, value, ...)
+		end
+		slider.__tsmSetValueGuarded = true
+	end
+end

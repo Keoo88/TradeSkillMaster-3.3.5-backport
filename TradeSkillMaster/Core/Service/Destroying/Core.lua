@@ -541,6 +541,7 @@ function private.UpdateBagDB()
 	if not private.settings.includeSoulbound then
 		query:Equal("isBound", false)
 	end
+	if TSM.Crafting and TSM.Crafting.PlayerProfessions then
 	if ClientInfo.IsPandaClassic() then
 		local disenchantName = Spell.GetInfo(7411)
 		local jewelcraftName = Spell.GetInfo(28897)
@@ -553,6 +554,7 @@ function private.UpdateBagDB()
 		local jewelcraftName = Spell.GetInfo(28897)
 		private.disenchantSkillLevel = TSM.Crafting.PlayerProfessions.GetProfessionSkill(UnitName("player"), disenchantName)
 		private.jewelcraftSkillLevel = TSM.Crafting.PlayerProfessions.GetProfessionSkill(UnitName("player"), jewelcraftName)
+	end
 	end
 	for _, slotId, itemString, quantity in query:Iterator() do
 		local minQuantity = nil

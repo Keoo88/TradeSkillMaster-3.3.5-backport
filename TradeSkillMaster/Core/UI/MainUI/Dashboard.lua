@@ -68,7 +68,7 @@ function private.GetDashboardFrame()
 		prevUnselectedCharacters[characterGuild] = true
 	end
 	wipe(private.settings.dashboardUnselectedCharacters)
-	TSM.Accounting.GoldTracker.GetCharacterGuilds(private.characterGuilds)
+	if TSM.Accounting then TSM.Accounting.GoldTracker.GetCharacterGuilds(private.characterGuilds) end
 	for _, characterGuild in ipairs(private.characterGuilds) do
 		private.settings.dashboardUnselectedCharacters[characterGuild] = prevUnselectedCharacters[characterGuild] or nil
 	end
@@ -192,7 +192,7 @@ function private.GetDashboardFrame()
 			:AddChild(UIElements.New("Graph", "goldGraph")
 				:SetMargin(0, 0, 8, 8)
 				:SetAxisStepFunctions(private.GraphXStepFunc, private.GraphYStepFunc)
-				:SetXRange(TSM.Accounting.GoldTracker.GetGraphTimeRange(private.settings.dashboardUnselectedCharacters))
+				:SetXRange(private.GetGraphTimeRangeSafe())
 				:SetYValueFunction(private.GetGraphYValue)
 				:SetFormatFunctions(private.GraphFormatX, private.GraphFormatY)
 				:SetScript("OnZoomChanged", private.GraphOnZoomChanged)
@@ -567,7 +567,13 @@ function private.GraphFormatY(value, suggestedStep, isTooltip)
 	end
 end
 
+function private.GetGraphTimeRangeSafe()
+	if not TSM.Accounting then return 0, 0 end
+	return TSM.Accounting.GoldTracker.GetGraphTimeRange(private.settings.dashboardUnselectedCharacters)
+end
+
 function private.GetGraphYValue(xValue)
+	if not TSM.Accounting then return 0 end
 	return TSM.Accounting.GoldTracker.GetGoldAtTime(xValue, private.settings.dashboardUnselectedCharacters)
 end
 
@@ -595,7 +601,7 @@ end
 
 function private.UpdateGraph(contentFrame)
 	-- update the graph
-	local minTime, maxTime = TSM.Accounting.GoldTracker.GetGraphTimeRange(private.settings.dashboardUnselectedCharacters)
+	local minTime, maxTime = private.GetGraphTimeRangeSafe()
 	local goldGraph = contentFrame:GetElement("goldGraph")
 	local zoomStart, zoomEnd = goldGraph:GetZoom()
 	if private.selectedTimeRange == TIME_RANGE_LOOKUP["all"] then
@@ -753,12 +759,13 @@ function private.PopulateDetails(contentFrame)
 	local saleTotal, salePerDay, saleTopItem, saleTopValue, saleTotalQuantity = 0, nil, nil, 0, 0
 	local buyTotal, buyPerDay, buyTopItem, buyTopValue, buyTotalQuantity = 0, nil, nil, 0, 0
 	local profitTopItem = nil
-	local query = TSM.Accounting.GetSummaryQuery(timeFilterStart, timeFilterEnd, unselectedCharacters)
 	local saleNumDays, buyNumDays = 1, 1
 	local saleItemTotals = TempTable.Acquire()
 	local buyItemTotals = TempTable.Acquire()
 	local saleItemNum = TempTable.Acquire()
 	local buyItemNum = TempTable.Acquire()
+	if TSM.Accounting then
+	local query = TSM.Accounting.GetSummaryQuery(timeFilterStart, timeFilterEnd, unselectedCharacters)
 	for _, recordType, itemString, price, quantity, timestamp in query:Iterator() do
 		if recordType == "sale" then
 			local daysAgo = floor((time() - timestamp) / (24 * 60 * 60))
@@ -779,6 +786,7 @@ function private.PopulateDetails(contentFrame)
 		end
 	end
 	query:Release()
+	end
 
 	local topSaleItemTotal = 0
 	for itemString, itemTotal in pairs(saleItemTotals) do

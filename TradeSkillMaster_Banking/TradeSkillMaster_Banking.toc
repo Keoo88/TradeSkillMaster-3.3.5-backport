@@ -1,0 +1,15 @@
+## Interface: 30300
+## Title: |cff00ff00TradeSkillMaster_Banking|r
+## Notes: Optional Banking module for TradeSkillMaster. Disable it in the AddOns list to free its memory.
+## Author: TSM Team (3.3.5 backport)
+## Version: v4.14.66
+## Dependency: TradeSkillMaster
+## X-Category: Auction House & Vendors
+
+Service\Core.lua
+Service\Util.lua
+Service\MoveContext.lua
+Service\Warehousing.lua
+Service\Mailing.lua
+Service\Auctioning.lua
+UI\BankingUI_Core.lua

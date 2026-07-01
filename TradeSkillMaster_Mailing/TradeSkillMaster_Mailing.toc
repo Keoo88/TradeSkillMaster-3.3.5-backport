@@ -1,0 +1,20 @@
+## Interface: 30300
+## Title: |cff00ff00TradeSkillMaster_Mailing|r
+## Notes: Optional Mailing module for TradeSkillMaster. Disable it in the AddOns list to free its memory.
+## Author: TSM Team (3.3.5 backport)
+## Version: v4.14.66
+## Dependency: TradeSkillMaster
+## X-Category: Auction House & Vendors
+
+Service\Core.lua
+Service\Inbox.lua
+Service\Open.lua
+Service\Send.lua
+Service\Groups.lua
+UI\MailingUI_Core.lua
+UI\MailingUI_Inbox.lua
+UI\MailingUI_Send.lua
+UI\MailingUI_Groups.lua
+UI\MailingUI_Other.lua
+UI\MainUI_Operations_Mailing.lua
+UI\MainUI_Settings_Mailing.lua

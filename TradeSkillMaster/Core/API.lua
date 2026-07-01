@@ -60,11 +60,11 @@ function TSM_API.IsUIVisible(uiName)
 	if uiName == "AUCTION" then
 		return TSM.UI.AuctionUI.IsVisible()
 	elseif uiName == "CRAFTING" then
-		return TSM.UI.CraftingUI.IsVisible()
+		return TSM.UI.CraftingUI and TSM.UI.CraftingUI.IsVisible() or false
 	elseif uiName == "MAILING" then
-		return TSM.UI.MailingUI.IsVisible()
+		return TSM.UI.MailingUI and TSM.UI.MailingUI.IsVisible() or false
 	elseif uiName == "VENDORING" then
-		return TSM.UI.VendoringUI.IsVisible()
+		return TSM.UI.VendoringUI and TSM.UI.VendoringUI.IsVisible() or false
 	else
 		error("Invalid uiName: "..tostring(uiName), 2)
 	end
@@ -83,7 +83,7 @@ function TSM_API.RegisterUICallback(uiName, addonTag, func)
 	end
 	private.ValidateArgumentType(func, "function", "func")
 	if uiName == "CRAFTING" then
-		TSM.UI.CraftingUI.RegisterApiCallback(addonTag, func)
+		if TSM.UI.CraftingUI then TSM.UI.CraftingUI.RegisterApiCallback(addonTag, func) end
 	else
 		error("Invalid uiName: "..tostring(uiName), 2)
 	end
@@ -102,7 +102,7 @@ function TSM_API.ShiftDefaultUIButton(uiName, addonTag, xOffset)
 	end
 	private.ValidateArgumentType(xOffset, "number", "xOffset")
 	if uiName == "VENDORING" then
-		TSM.UI.VendoringUI.ShiftDefaultUIButton(addonTag, xOffset)
+		if TSM.UI.VendoringUI then TSM.UI.VendoringUI.ShiftDefaultUIButton(addonTag, xOffset) end
 	else
 		error("Invalid uiName: "..tostring(uiName), 2)
 	end
@@ -519,6 +519,7 @@ end
 -- @treturn function An iterator with fields: `index`, `recipeString`, `itemString`, `num`
 function TSM_API.CraftingQueueIterator()
 	local result = {}
+	if not TSM.Crafting then return private.CraftingQueueIteratorHelper, result, 0 end
 	local query = TSM.Crafting.Queue.CreateQuery()
 		:Select("recipeString", "craftString", "num")
 	for _, recipeString, craftString, num in query:Iterator() do
@@ -542,6 +543,7 @@ function TSM_API.GetCraftingQueueItemMaterials(recipeString, result)
 		error("Invalid 'recipeString' argument (must be a valid recipe string): "..tostring(recipeString), 2)
 	end
 	private.ValidateArgumentType(result, "table", "result")
+	if not TSM.Crafting then return end
 	for _, itemString, quantity in TSM.Crafting.MatIteratorByRecipeString(recipeString) do
 		result[itemString] = quantity
 	end

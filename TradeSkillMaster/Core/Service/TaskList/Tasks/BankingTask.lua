@@ -28,7 +28,7 @@ function BankingTask.__init(self, isGuildBank)
 	self._isMoving = false
 	self._isGuildBank = isGuildBank
 
-	if not private.registeredCallbacks then
+	if TSM.Banking and not private.registeredCallbacks then
 		TSM.Banking.RegisterFrameCallback(private.FrameCallback)
 		private.registeredCallbacks = true
 	end
@@ -54,7 +54,7 @@ end
 function BankingTask.OnButtonClick(self)
 	private.currentlyMoving = self
 	self._isMoving = true
-	TSM.Banking.MoveToBag(self:GetItems(), private.MoveCallback)
+	if TSM.Banking then TSM.Banking.MoveToBag(self:GetItems(), private.MoveCallback) end
 	self:_UpdateState()
 	TSM.TaskList.OnTaskUpdated()
 end
@@ -67,7 +67,9 @@ end
 
 function BankingTask._UpdateState(self)
 	local isOpen = nil
-	if self._isGuildBank then
+	if not TSM.Banking then
+		isOpen = false
+	elseif self._isGuildBank then
 		isOpen = TSM.Banking.IsGuildBankOpen()
 	else
 		isOpen = TSM.Banking.IsBankOpen()

@@ -33,6 +33,7 @@ end
 
 function Cooldowns.OnEnable()
 	TSM.TaskList.RegisterTaskPool(private.ActiveTaskIterator)
+	if not TSM.Crafting then return end
 	private.updateTimer = DelayTimer.New("COOLDOWNS_UPDATE", private.PopulateTasks)
 	private.query = TSM.Crafting.CreateCooldownSpellsQuery()
 		:Select("profession", "craftString")
@@ -54,6 +55,7 @@ function private.ActiveTaskIterator()
 end
 
 function private.PopulateTasks()
+	if not private.query then return end
 	-- clean DB entries with expired times
 	for craftString, expireTime in pairs(private.settings.craftingCooldowns) do
 		if expireTime <= time() then

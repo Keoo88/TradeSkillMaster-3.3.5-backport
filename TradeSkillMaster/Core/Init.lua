@@ -5,6 +5,7 @@
 -- ------------------------------------------------------------------------------ --
 
 local TSM = select(2, ...) ---@class TSM
+_G.TSMAddon = TSM -- expose core table to optional toggleable sub-addons (e.g. TradeSkillMaster_Mailing)
 local Lifecycle = TSM.LibTSMWoW:Include("Util.Lifecycle")
 local AddonSettings = TSM.LibTSMApp:Include("Service.AddonSettings")
 local SlashCommands = TSM.LibTSMApp:Include("Service.SlashCommands")

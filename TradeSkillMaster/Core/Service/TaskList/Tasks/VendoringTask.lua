@@ -58,7 +58,7 @@ function VendoringTask.OnButtonClick(self)
 
 	local didBuy = false
 	for itemString, quantity in pairs(itemsToBuy) do
-		TSM.Vendoring.Buy.BuyItem(itemString, quantity)
+		if TSM.Vendoring and TSM.Vendoring.Buy then TSM.Vendoring.Buy.BuyItem(itemString, quantity) end
 		self:_RemoveItem(itemString, quantity)
 		didBuy = true
 	end
@@ -76,7 +76,7 @@ end
 -- ============================================================================
 
 function VendoringTask._UpdateState(self)
-	if not TSM.UI.VendoringUI.IsVisible() then
+	if not (TSM.UI.VendoringUI and TSM.UI.VendoringUI.IsVisible()) then
 		return self:_SetButtonState(false, L["NOT OPEN"])
 	end
 	local canBuy = false
