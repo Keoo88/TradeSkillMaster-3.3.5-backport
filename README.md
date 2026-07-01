@@ -105,15 +105,11 @@ based on your groups, and empty your mailbox with a single click.
 
 1. Download the latest release (or clone this repository).
 2. Extract the archive.
-3. **Important:** make sure the addon folder is named exactly **`TradeSkillMaster`**
-   (GitHub ZIPs extract with a `-master` suffix — rename it).
-4. Move the `TradeSkillMaster` folder into:
+3. **Important:** the archive contains **7 addon folders**. Move **all** of them into:
    ```
    \Interface\AddOns\
    ```
-5. Enable it on the character-select AddOns screen and launch the game. Type `/tsm` to open.
-
-> No extra addons are required — everything needed is bundled.
+4. Enable them on the character-select AddOns screen and launch the game. Type `/tsm` to open.
 
 ### Compatibility
 
@@ -207,15 +203,11 @@ based on your groups, and empty your mailbox with a single click.
 
 1. Скачайте последний релиз (или клонируйте репозиторий).
 2. Распакуйте архив.
-3. **Важно:** папка аддона должна называться ровно **`TradeSkillMaster`**
-   (GitHub ZIP распаковывается с суффиксом `-master` — переименуйте).
-4. Переместите папку `TradeSkillMaster` в:
+3. **Важно:** архив содержит **7 папок аддонов**. Переместите **все** в:
    ```
    \Interface\AddOns\
    ```
-5. Включите его на экране выбора персонажа и запустите игру. Введите `/tsm`, чтобы открыть.
-
-> Дополнительные аддоны не нужны — всё необходимое уже встроено.
+4. Включите их на экране выбора персонажа и запустите игру. Введите `/tsm`, чтобы открыть.
 
 ### Совместимость
 
