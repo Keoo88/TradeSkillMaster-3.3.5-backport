@@ -16,6 +16,7 @@ local private = {
 	timeoutTimer = nil,
 	pendingIndex = nil,
 	pendingQuantity = 0,
+	pendingItemString = nil,
 }
 local FIRST_BUY_TIMEOUT = 5
 local FIRST_BUY_TIMEOUT_PER_STACK = 1
@@ -42,8 +43,9 @@ end)
 ---Buys an item from the vendor.
 ---@param index number The index of the item to buy
 ---@param quantity number The quantity to buy
-function Buy.BuyIndex(index, quantity)
-	private.BuyIndex(index, quantity)
+---@param itemString? string The intended item (guards against the merchant slot shifting)
+function Buy.BuyIndex(index, quantity, itemString)
+	private.BuyIndex(index, quantity, itemString)
 end
 
 
@@ -52,10 +54,24 @@ end
 -- Private Helper Functions
 -- ============================================================================
 
-function private.BuyIndex(index, quantity)
+function private.BuyIndex(index, quantity, itemString)
+	-- On 3.3.5 private servers the merchant item order can shift (via MERCHANT_UPDATE)
+	-- between when this buy index was captured (e.g. when the quantity dialog was opened)
+	-- and when we actually buy, which would silently buy the wrong item. If we know which
+	-- item was intended, make sure the slot still holds it and re-resolve the index if it
+	-- moved. Never buy a mismatched item.
+	if itemString then
+		local resolvedIndex = private.ResolveIndex(index, itemString)
+		if not resolvedIndex then
+			Log.Warn("Vendor item is no longer at the expected slot (%s); aborting buy", tostring(itemString))
+			return
+		end
+		index = resolvedIndex
+	end
 	local maxStack = Merchant.GetItemMaxStack(index)
 	private.ClearPendingContext()
 	private.pendingIndex = index
+	private.pendingItemString = itemString
 	-- 3.3.5: BuyMerchantItem(index, count) с count > 1 на приватных серверах
 	-- отклоняется фейковыми ошибками ("inventory full", "not enough money").
 	-- Эмулируем дефолтный UI: count=1 за вызов, повторяем stacksToBuy раз.
@@ -103,11 +119,36 @@ end
 
 function private.BuyTimeout()
 	Log.Warn("Retrying buying (%d, %d)", private.pendingIndex, private.pendingQuantity)
-	private.BuyIndex(private.pendingIndex, private.pendingQuantity)
+	private.BuyIndex(private.pendingIndex, private.pendingQuantity, private.pendingItemString)
 end
 
 function private.ClearPendingContext()
 	private.pendingIndex = nil
 	private.pendingQuantity = 0
+	private.pendingItemString = nil
 	private.timeoutTimer:Cancel()
+end
+
+---Verifies that the given merchant slot still holds the intended item, re-resolving the
+---index if the merchant list shifted. Returns nil if the item can't be found.
+---@param index number The previously captured merchant slot index
+---@param itemString string The intended item
+---@return number?
+function private.ResolveIndex(index, itemString)
+	local wantBase = ItemString.GetBase(itemString)
+	if not wantBase then
+		return index
+	end
+	local link = Merchant.GetItemLink(index)
+	if link and ItemString.GetBase(link) == wantBase then
+		return index
+	end
+	-- The slot moved (or its link wasn't cached yet); find the current slot for this item.
+	for i = 1, Merchant.GetNumItems() do
+		local iLink = Merchant.GetItemLink(i)
+		if iLink and ItemString.GetBase(iLink) == wantBase then
+			return i
+		end
+	end
+	return nil
 end

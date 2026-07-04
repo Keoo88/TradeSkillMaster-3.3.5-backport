@@ -128,8 +128,11 @@ function Element:Release()
 	local frame = self:_GetBaseFrame()
 
 	-- Clear the OnLeave script before hiding the frame (otherwise it'll get called)
+	-- Use ScriptWrapper.Clear (not a raw SetScript) so the shared-wrapper bookkeeping
+	-- (handlers/objLookup/debugNameObj) is removed too; otherwise the wrapper can later
+	-- fire on a recycled frame with a nil handler and spam errors.
 	if self._scripts.OnLeave then
-		frame:SetScript("OnLeave", nil)
+		ScriptWrapper.Clear(frame, "OnLeave")
 		self._scripts.OnLeave = nil
 	end
 
@@ -145,8 +148,11 @@ function Element:Release()
 	end
 
 	-- Clear scripts FIRST so SetParent(nil) below doesn't trigger any OnHide TSM callbacks
+	-- Route through ScriptWrapper.Clear so the shared-wrapper bookkeeping is cleaned up
+	-- (a raw SetScript(nil) here leaves stale handler entries and can cause nil-handler
+	-- errors when the frame is recycled).
 	for script in pairs(self._scripts) do
-		frame:SetScript(script, nil)
+		ScriptWrapper.Clear(frame, script)
 	end
 	wipe(self._scripts)
 	wipe(self._scriptAction)

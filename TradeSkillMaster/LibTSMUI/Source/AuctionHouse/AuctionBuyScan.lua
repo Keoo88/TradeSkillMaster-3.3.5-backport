@@ -109,6 +109,14 @@ end
 -- Class Meta Methods
 -- ============================================================================
 
+-- 3.3.5 multi-buy fix (see ACTION_BUY_AUCTION_CONFIRMED): after each buyout the
+-- server briefly clears/reindexes the native "list", so re-locating the next lot
+-- can transiently fail. Bounded settle+relocate retry mirrors TSM 2.8
+-- DoBuyout/FindCurrentAuctionForBuyout (0.2s settle, up to 3 retries) so the last
+-- of several identical lots isn't falsely dropped with "Failed to buy".
+local CLASSIC_BUY_RELOCATE_RETRY_DELAY = 0.25
+local CLASSIC_BUY_RELOCATE_MAX_RETRIES = 4
+
 function AuctionBuyScan.__private:__init(scanType, scanTypeName, isPlayerFunc, alertThresholdFunc)
 	self._isPlayerFunc = isPlayerFunc ---@type fun(characterName: string, includeAlts: boolean): boolean
 	self._alertThresholdFunc = alertThresholdFunc
@@ -125,6 +133,10 @@ function AuctionBuyScan.__private:__init(scanType, scanTypeName, isPlayerFunc, a
 	self._selectionPostContext = AuctionPostContext.New()
 	self._selectionDelayTimer = DelayTimer.New("AUCTION_BUY_SCAN_SELECTION_DELAY_"..scanTypeName, self._manager:CallbackToProcessAction("ACTION_AUCTION_SELECTION_CHANGED_DELAYED"))
 	self._restartDelayTimer = DelayTimer.New("AUCTION_BUY_SCAN_RESTART_DELAY_"..scanTypeName, self._manager:CallbackToProcessAction("ACTION_RESTART_DELAYED"))
+	-- 3.3.5 multi-buy fix: timers that re-attempt a confirmed buy/bid after the
+	-- native "list" settles following the previous action.
+	self._buyRetryTimer = DelayTimer.New("AUCTION_BUY_SCAN_BUY_RETRY_"..scanTypeName, self._manager:CallbackToProcessAction("ACTION_BUY_AUCTION_CONFIRMED_RETRY"))
+	self._bidRetryTimer = DelayTimer.New("AUCTION_BUY_SCAN_BID_RETRY_"..scanTypeName, self._manager:CallbackToProcessAction("ACTION_BID_AUCTION_CONFIRMED_RETRY"))
 
 	BagTracking.RegisterQuantityCallback(self._manager:CallbackToProcessAction("ACTION_BAG_QUANTITY_UPDATED"))
 	AuctionHouseWrapper.RegisterAuctionIdUpdateCallback(self._manager:CallbackToProcessAction("ACTION_AUCTION_ID_UPDATED"))
@@ -879,6 +891,23 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				end
 			end
 			if not ok then
+				-- 3.3.5 multi-buy fix: right after a previous buyout the server clears/
+				-- reindexes the native "list" (AUCTION_ITEM_LIST_UPDATE), so a single-shot
+				-- locate on that transient list falsely reports the lot as gone and would
+				-- DELETE a still-present auction (classic "last of several identical lots
+				-- fails with Failed to buy and disappears"). Mirror TSM 2.8 DoBuyout: wait
+				-- for the list to settle and re-locate a bounded number of times before
+				-- giving up. Put the index back so the scheduled retry can re-validate it.
+				self._buyConfirmRetries = (self._buyConfirmRetries or 0) + 1
+				if self._buyConfirmRetries <= CLASSIC_BUY_RELOCATE_MAX_RETRIES then
+					if index then
+						tinsert(state.findResult, index)
+					end
+					self._buyRetryQuantity = quantity
+					self._buyRetryTimer:RunForTime(CLASSIC_BUY_RELOCATE_RETRY_DELAY)
+					return
+				end
+				self._buyConfirmRetries = nil
 				-- Lot vanished between find and confirm. Don't loop through another find
 				-- (which would set findResult=nil and freeze the buttons grey for the full
 				-- per-item walk). Just remove the row and clear the selection — same UX
@@ -903,6 +932,7 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				end
 				return
 			end
+			self._buyConfirmRetries = nil
 		end
 		local future = state.auctionScan:PlaceBidOrBuyout(index, buyout, state.selectedAuction, quantity)
 		if not future then
@@ -912,6 +942,15 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		state.lastBuyIndex = index
 		state.numBought = state.numBought + ((not LibTSMUI.IsVanillaClassic() and not LibTSMUI.IsBCClassic() and not LibTSMUI.IsWrathClassic()) and quantity or 1)
 		manager:ManageFuture("pendingFuture", future, "ACTION_BUYOUT_FUTURE_DONE")
+	elseif action == "ACTION_BUY_AUCTION_CONFIRMED_RETRY" then
+		-- 3.3.5 multi-buy fix: re-attempt the confirmed buy after the native "list"
+		-- has had time to settle following the previous buyout (see the settle/relocate
+		-- retry in ACTION_BUY_AUCTION_CONFIRMED). Bail safely if the selection is gone.
+		if not state.selectedAuction then
+			self._buyConfirmRetries = nil
+			return
+		end
+		return manager:ProcessAction("ACTION_BUY_AUCTION_CONFIRMED", self._buyRetryQuantity)
 	elseif action == "ACTION_BUYOUT_FUTURE_DONE" then
 		local result = ...
 		if not state.selectedAuction then
@@ -1068,11 +1107,26 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				end
 			end
 			if not ok then
+				-- 3.3.5 multi-buy fix: same premature/empty native "list" race as buyout --
+				-- after a prior action the list briefly refreshes, so re-locate with a
+				-- bounded settle delay before giving up (mirrors TSM 2.8). A bid leaves the
+				-- auction in place, so we don't remove the row; just retry then fail+rescan.
+				self._bidConfirmRetries = (self._bidConfirmRetries or 0) + 1
+				if self._bidConfirmRetries <= CLASSIC_BUY_RELOCATE_MAX_RETRIES then
+					if index then
+						tinsert(state.findResult, index)
+					end
+					self._bidRetryQuantity = quantity
+					self._bidRetryTimer:RunForTime(CLASSIC_BUY_RELOCATE_RETRY_DELAY)
+					return
+				end
+				self._bidConfirmRetries = nil
 				-- Lot is no longer on the live list. Unlike buyout we do NOT remove the row
 				-- here: a bid leaves the auction in place, so keep the item and just fail
 				-- this attempt + rescan (buttons re-enable instead of freezing).
 				return manager:ProcessAction("ACTION_BID_FUTURE_DONE", false)
 			end
+			self._bidConfirmRetries = nil
 		end
 		-- Bid on the auction
 		local result, future = state.auctionScan:PrepareForBidOrBuyout(index, state.selectedAuction, false, quantity)
@@ -1085,6 +1139,14 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		state.lastBuyIndex = index
 		state.numBid = state.numBid + ((not LibTSMUI.IsVanillaClassic() and not LibTSMUI.IsBCClassic() and not LibTSMUI.IsWrathClassic()) and quantity or 1)
 		manager:ManageFuture("pendingFuture", future, "ACTION_BID_FUTURE_DONE")
+	elseif action == "ACTION_BID_AUCTION_CONFIRMED_RETRY" then
+		-- 3.3.5 multi-buy fix: re-attempt the confirmed bid after the native "list"
+		-- has settled (see ACTION_BID_AUCTION_CONFIRMED). Bail safely if selection gone.
+		if not state.selectedAuction then
+			self._bidConfirmRetries = nil
+			return
+		end
+		return manager:ProcessAction("ACTION_BID_AUCTION_CONFIRMED", self._bidRetryQuantity)
 	elseif action == "ACTION_BID_FUTURE_DONE" then
 		local result = ...
 		if not state.selectedAuction then

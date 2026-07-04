@@ -30,7 +30,19 @@ local private = {
 local MAIL_REFRESH_TIME = ClientInfo.IsRetail() and 15 or 60
 local IS_CLASSIC = not ClientInfo.IsRetail()
 -- 3.3.5/Warmane: нет реального IsCommandPending, держим мин. интервал между операциями
-local CLASSIC_MAIL_THROTTLE = 0.3
+-- (это и есть скорость сборки писем). Меньше значение — быстрее сборка; слишком малый
+-- интервал сервер может «глотать», но пропущенные письма подхватит повторный проход.
+local CLASSIC_MAIL_THROTTLE = 0.1
+-- 3.3.5/Warmane: макс. время ожидания подтверждения изъятия одного письма (замена
+-- ненадёжного MAIL_INBOX_UPDATE), чтобы поток сборки не зависал «на половине».
+local CLASSIC_MAIL_CONFIRM_TIMEOUT = 1
+-- 3.3.5/Warmane: страховочный лимит числа повторных проходов сборки (защита от зацикливания).
+local MAX_OPEN_PASSES = 15
+-- 3.3.5/Warmane: короткая пауза между рескана��и ЖИВОГО инбокса (замена старой Sleep(1) между
+-- проходами, которая и давала рваный сбор «пару писем — пауза — пару писем»). Так как теперь
+-- читаем живой инбокс, а не догоняющую трекинг-БД, длинная пауза не нужна — хватает короткой,
+-- чтобы сервер успел применить удаления и подтянуть скрытые письма.
+local CLASSIC_MAIL_RESCAN_SETTLE = 0.2
 local MANUAL_MAIL_TYPES = {
 	[Inbox.MAIL_TYPE.OTHER.GOLD_AND_ITEMS] = true,
 	[Inbox.MAIL_TYPE.OTHER.ITEMS] = true,
@@ -82,6 +94,11 @@ end
 function private.OpenMailThread(autoRefresh, keepMoney, filterText, filterType)
 	-- 3.3.5: input:GetValue() может вернуть nil → Matches() ассертит.
 	filterText = filterText or ""
+	-- 3.3.5/Warmane: у классики отдельный цикл по живому инбоксу (см. OpenMailThreadClassic).
+	if IS_CLASSIC then
+		return private.OpenMailThreadClassic(autoRefresh, keepMoney, filterText, filterType)
+	end
+	local passCount = 0
 	while true do
 		local preLeftMail, preTotalMail = Inbox.GetNumItems()
 		local query = TSM.Mailing.Inbox.CreateQuery()
@@ -103,11 +120,25 @@ function private.OpenMailThread(autoRefresh, keepMoney, filterText, filterType)
 		end
 		query:Release()
 
-		private.OpenMails(mails, keepMoney, filterType)
+		local tookAny = private.OpenMails(mails, keepMoney, filterType)
 		TempTable.Release(mails)
+		passCount = passCount + 1
 
 		local postLeftMail, postTotalMail = Inbox.GetNumItems()
-		if not autoRefresh or (preLeftMail == postLeftMail and preTotalMail == postTotalMail and postTotalMail == postLeftMail) then
+		local shouldContinue
+		if IS_CLASSIC then
+			-- 3.3.5/Warmane: трекинговая БД писем отстаёт от живого инбокса (скан по MAIL_INBOX_UPDATE
+			-- приходит с задержкой), поэтому самое свежее/верхнее письмо могло не попасть в запрос и
+			-- за один проход собирались не все (напр. «2 из 3, самое первое не собралось»). Инвойсы
+			-- теперь собираются без блокирующего ожидания, поэтому решаем по факту «забрали ли что-то
+			-- за проход», а не по ещё не обновлённым сервером сч��тчикам: пока проход что-то забирает —
+			-- делаем ещё один (после рескана), с лимитом MAX_OPEN_PASSES от зацикливания.
+			shouldContinue = tookAny and postTotalMail > 0 and passCount < MAX_OPEN_PASSES
+		else
+			-- retail: прежнее поведение по счётчикам инбокса.
+			shouldContinue = autoRefresh and not (preLeftMail == postLeftMail and preTotalMail == postTotalMail and postTotalMail == postLeftMail)
+		end
+		if not shouldContinue then
 			Threading.Sleep(1)
 			break
 		end
@@ -118,6 +149,114 @@ function private.OpenMailThread(autoRefresh, keepMoney, filterText, filterType)
 
 	private.PrintMoneyCollected()
 	private.isOpening = false
+end
+
+-- 3.3.5/Warmane: цикл сбора для классики по образцу Postal (Modules/OpenAll.lua) и TSM 2.8
+-- (Mailing/Inbox.lua): идём по ЖИВОМУ инбоксу и продвигаемся к следующему письму только после
+-- подтверждения изъятия текущего. Раньше классика собирала пачку индексов из трекинг-БД (которая
+-- отстаёт от инбокса) и делала Sleep(1) между проходами — отсюда рваный сбор «пару писем — пауза».
+-- Теперь пейсинг задаёт само подтверждение изъятия, без длинных пауз.
+function private.OpenMailThreadClassic(autoRefresh, keepMoney, filterText, filterType)
+	filterText = strlower(filterText or "")
+	local passCount = 0
+	while true do
+		local tookAny = false
+		local numLeft = Inbox.GetNumItems()
+		-- Нисходящий обход безопасен при удалении: изъятое письмо сдвигает только большие индексы,
+		-- которые мы уже прошли; ещё не обработанные меньшие индексы не смещаются (как в Postal).
+		for index = numLeft, 1, -1 do
+			Threading.WaitForFunction(private.CanOpenMail)
+			if private.OpenSingleMailClassic(index, keepMoney, filterText, filterType) then
+				tookAny = true
+			end
+		end
+		passCount = passCount + 1
+
+		local _, numTotal = Inbox.GetNumItems()
+		-- Повторяем проход, только пока реально что-то собираем и остаются письма (со страховочным
+		-- лимитом MAX_OPEN_PASSES от зацикливания).
+		if not (tookAny and numTotal > 0 and passCount < MAX_OPEN_PASSES) then
+			break
+		end
+		CheckInbox()
+		Threading.Sleep(CLASSIC_MAIL_RESCAN_SETTLE)
+	end
+
+	private.PrintMoneyCollected()
+	private.isOpening = false
+end
+
+-- 3.3.5/Warmane: собирает ОДНО письмо и ограниченно ждёт подтверждения изъятия. Возвращает true,
+-- если письмо было взято (нужно для решения о ещё одном проходе).
+function private.OpenSingleMailClassic(index, keepMoney, filterText, filterType)
+	local mailType = Inbox.GetMailType(index)
+	if filterType then
+		if mailType ~= filterType then
+			return false
+		end
+	elseif not mailType then
+		return false
+	end
+	if filterText ~= "" and not private.MatchesFilterText(index, filterText) then
+		return false
+	end
+
+	local hasBagSpace = not Mail.GetInboxItemLink(index) or private.GetTotalFreeBagSlots() > private.settings.keepMailSpace
+	if not hasBagSpace then
+		return false
+	end
+
+	local _, money, cod, numItems, _, _, textCreated = Inbox.GetHeaderInfo(index)
+	if cod ~= 0 then
+		return false
+	end
+	if keepMoney and money > 0 then
+		return false
+	end
+	-- Нечего забирать (письмо уже опустошено или это просто текстовое письмо) — пропускаем, иначе
+	-- дёргали бы AutoLootMailItem по пустышкам и держали бы tookAny=true, накручивая лишние проходы.
+	if money <= 0 and numItems <= 0 then
+		return false
+	end
+
+	local message = private.settings.inboxMessages and private.GetOpenMailMessage(index) or nil
+	-- Отмечаем письмо прочитанным
+	Inbox.GetText(index)
+	-- Снимок инбокса ДО изъятия — по нему ждём реальное изменение.
+	local preTakeLeft, preTakeTotal = Inbox.GetNumItems()
+	AutoLootMailItem(index)
+	private.lastMailAction = GetTime()
+	private.moneyCollected = private.moneyCollected + money
+
+	-- Ограниченное по времени подтверждение изъятия (аналог ожидания MAIL_INBOX_UPDATE в TSM 2.8 и
+	-- опроса дельты «предметы/золото» в Postal): выходим сразу при изменении инбокса, но не дольше
+	-- CLASSIC_MAIL_CONFIRM_TIMEOUT, чтобы не обгонять сервер (иначе он «глотает» частые запросы и
+	-- письма пропускаются) и при этом не зависать.
+	local deadline = GetTime() + CLASSIC_MAIL_CONFIRM_TIMEOUT
+	local _, changed = Threading.WaitForFunction(private.MailActionConfirmed, deadline, index, preTakeLeft, preTakeTotal)
+	if message then
+		ChatMessage.PrintUser(message)
+	end
+	-- Личные письма с телом сервер не удаляет сам — удаляем вручную, только когда изъятие подтверждено.
+	if changed and textCreated and MANUAL_MAIL_TYPES[mailType] then
+		private.DeleteEmptyMail(index)
+	end
+	return true
+end
+
+-- 3.3.5/Warmane: замена фильтра трекинг-БД (Matches itemList/subject) для обхода по живому инбоксу.
+function private.MatchesFilterText(index, filterText)
+	local _, _, _, numItems, subject = Inbox.GetHeaderInfo(index)
+	if subject and strfind(strlower(subject), filterText, 1, true) then
+		return true
+	end
+	for i = 1, numItems do
+		local link = Inbox.GetAttachment(index, i)
+		if link and strfind(strlower(link), filterText, 1, true) then
+			return true
+		end
+	end
+	return false
 end
 
 function private.CanOpenMail()
@@ -144,7 +283,28 @@ function private.GetTotalFreeBagSlots()
 	return total
 end
 
+-- 3.3.5/Warmane: предикат ограниченного по времени ожидания подтверждения изъятия письма.
+-- Возвращает (true, true) при реальном и��менении инбокса и (true, false) по истечении дедлайна.
+function private.MailActionConfirmed(deadline, index, prevLeft, prevTotal)
+	if GetTime() >= deadline then
+		return true, false
+	end
+	local left, total = Inbox.GetNumItems()
+	if left ~= prevLeft or total ~= prevTotal then
+		return true, true
+	end
+	-- Письмо могло не удалиться сервером сразу (остаётся прочитанным пустым) — тогда общий
+	-- счётчик не меняется. Подтверждаем по факту: у самого письма больше нет золота/вложений
+	-- (срабатывает сразу после изъятия, не дожидаясь удаления последнего письма).
+	local _, money, _, numItems = Inbox.GetHeaderInfo(index)
+	if money <= 0 and numItems <= 0 then
+		return true, true
+	end
+	return false
+end
+
 function private.OpenMails(mails, keepMoney, filterType)
+	local tookAny = false
 	for i = 1, #mails do
 		local index = mails[i]
 		Threading.WaitForFunction(private.CanOpenMail)
@@ -158,9 +318,12 @@ function private.OpenMails(mails, keepMoney, filterType)
 				local message = private.settings.inboxMessages and private.GetOpenMailMessage(index) or nil
 				-- Marks the mail as read
 				Inbox.GetText(index)
+				-- 3.3.5/Warmane: снимок инбокса ДО изъятия — по нему затем ждём реальное изменение.
+				local preTakeLeft, preTakeTotal = Inbox.GetNumItems()
 				AutoLootMailItem(index)
 				private.lastMailAction = GetTime()
 				private.moneyCollected = private.moneyCollected + money
+				tookAny = true
 
 				local needConfirm, isManualType = false, false
 				if money > 0 or numItems > 0 then
@@ -172,22 +335,44 @@ function private.OpenMails(mails, keepMoney, filterType)
 					end
 				end
 				if needConfirm then
-					-- 3.3.5/Warmane: события MAIL_SUCCESS / CLOSE_INBOX_ITEM не существуют (retail-only):
-					-- их регистрация падала/висла на первом же письме с золотом/вложением.
-					-- На классике ждём MAIL_INBOX_UPDATE — оно реально приходит после изъятия.
-					local confirmEvent = IS_CLASSIC and "MAIL_INBOX_UPDATE" or (isManualType and "MAIL_SUCCESS" or "CLOSE_INBOX_ITEM")
-					if Threading.WaitForEvent(confirmEvent, "MAIL_FAILED") ~= "MAIL_FAILED" then
+					if not IS_CLASSIC then
+						-- Retail: ждём событие подтверждения изъятия.
+						local confirmEvent = isManualType and "MAIL_SUCCESS" or "CLOSE_INBOX_ITEM"
+						if Threading.WaitForEvent(confirmEvent, "MAIL_FAILED") ~= "MAIL_FAILED" then
+							if message then
+								ChatMessage.PrintUser(message)
+							end
+							if textCreated and isManualType then
+								private.DeleteEmptyMail(index)
+							end
+						end
+					elseif isManualType and textCreated then
+						-- 3.3.5/Warmane: только ручные письма нужно удалять вручную; DeleteEmptyMail нельзя
+						-- звать до фактического изъятия (иначе можно удалить непустое письмо), поэтому
+						-- здесь ждём реального изъятия, но не дольше CLASSIC_MAIL_CONFIRM_TIMEOUT.
+						local deadline = GetTime() + CLASSIC_MAIL_CONFIRM_TIMEOUT
+						local _, changed = Threading.WaitForFunction(private.MailActionConfirmed, deadline, index, preTakeLeft, preTakeTotal)
+						if changed then
+							if message then
+								ChatMessage.PrintUser(message)
+							end
+							private.DeleteEmptyMail(index)
+						end
+					else
+						-- 3.3.5/Warmane: инвойсы (продажи/отмены/истёкшие) сервер удаляет сам после изъятия,
+						-- вручную удалять не нужно. Предмет/золото уже забраны AutoLootMailItem, поэтому НЕ
+						-- блокируем поток ожиданием ответа сервера — это и убирало заметную паузу перед сбором
+						-- (в т.ч. первого письма). Пейсинг задаёт троттл CanOpenMail, а недобранное подхватит
+						-- повторный проход внешнего цикла.
 						if message then
 							ChatMessage.PrintUser(message)
-						end
-						if textCreated and isManualType then
-							private.DeleteEmptyMail(index)
 						end
 					end
 				end
 			end
 		end
 	end
+	return tookAny
 end
 
 

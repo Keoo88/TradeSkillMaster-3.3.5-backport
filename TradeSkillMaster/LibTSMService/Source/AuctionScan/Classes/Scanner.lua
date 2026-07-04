@@ -36,6 +36,7 @@ local private = {
 	doneTimer = nil,
 	updateTimer = nil,
 	missingItemIds = {},
+	classicEmptyRetries = 0,
 }
 local BROWSE_MISSING_INFO_RETRY_DELAY = 0.5
 local SEARCH_NOT_READY_RETRY_DELAY = 0.1
@@ -44,6 +45,14 @@ local SEARCH_AH_NOT_READY_RETRY_DELAY = 0.5
 local SEARCH_MISSING_INFO_RETRY_DELAY = 0.5
 local FUTURE_FAILED_RETRY_DELAY = 0.1
 local SORT_RETRY_DELAY = 0.5
+
+-- 3.3.5: bounded retry for a premature/empty AUCTION_ITEM_LIST_UPDATE that
+-- resolves the browse query future before the server sends the real page.
+-- Mirrors LibAuctionScan (TSM 2.8) soft/hard retry on bad/incomplete data so a
+-- scan is never finalized on an empty page that's really still loading.
+local CLASSIC_EMPTY_PAGE_RETRY_DELAY = 0.3
+local CLASSIC_EMPTY_PAGE_MAX_RETRIES = 8
+local CLASSIC_EMPTY_PAGE_HARD_RETRY_AT = 4
 
 
 
@@ -93,6 +102,7 @@ Scanner:OnModuleLoad(function()
 				private.searchRow = nil
 				private.callback = nil
 				private.retryCount = 0
+				private.classicEmptyRetries = 0
 				private.retryTimer:Cancel()
 				if private.pendingFuture then
 					private.pendingFuture:Cancel()
@@ -177,7 +187,22 @@ Scanner:OnModuleLoad(function()
 				if not private.query:_BrowseIsPageValid() then
 					-- This page isn't valid, so go to the next page
 					return "ST_BROWSE_REQUEST_MORE"
-				elseif not private.CheckBrowseResults() then
+				end
+				-- 3.3.5: guard against a premature/empty AUCTION_ITEM_LIST_UPDATE that
+				-- resolves the browse query future before the server actually sends the
+				-- requested page. Without this, an empty first page is accepted as "no
+				-- results" and the scan finishes with nothing; the real update then
+				-- arrives while the FSM is already idle and gets dropped -> intermittent
+				-- "sometimes scans, sometimes not". Mirrors LibAuctionScan (TSM 2.8).
+				local classicAction = private.ClassicEmptyPageGuard()
+				if classicAction == "SOFT" then
+					private.retryTimer:RunForTime(CLASSIC_EMPTY_PAGE_RETRY_DELAY)
+					return
+				elseif classicAction == "HARD" then
+					-- The query may have been dropped by the server; re-send it.
+					return "ST_BROWSE_SEND"
+				end
+				if not private.CheckBrowseResults() then
 					-- Results aren't valid yet, so check again
 					private.retryTimer:RunForTime(BROWSE_MISSING_INFO_RETRY_DELAY)
 					return
@@ -194,6 +219,7 @@ Scanner:OnModuleLoad(function()
 					return "ST_BROWSE_REQUEST_MORE"
 				end
 			end)
+			:AddTransition("ST_BROWSE_SEND")
 			:AddTransition("ST_BROWSE_CHECKING")
 			:AddTransition("ST_BROWSE_DONE")
 			:AddTransition("ST_BROWSE_REQUEST_MORE")
@@ -650,6 +676,40 @@ function private.CalcMarketValue(prices)
 		sum = sum + prices[i]
 	end
 	return floor(sum / cut + 0.5)
+end
+
+-- 3.3.5: decide whether the current (classic) browse page is real data or a
+-- premature/empty AUCTION_ITEM_LIST_UPDATE. Returns:
+--   "OK"   -> page has data (or out of retries / not applicable), proceed
+--   "SOFT" -> empty page; wait briefly and re-check (real update likely en route)
+--   "HARD" -> empty for too long; re-send the query (it may have been dropped)
+-- Mirrors LibAuctionScan (TSM 2.8), which never finalizes a scan on an empty or
+-- incomplete page and instead soft/hard-retries up to maxRetries.
+function private.ClassicEmptyPageGuard()
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		return "OK"
+	end
+	-- Only guard the initial page of a normal browse. Later pages ending empty
+	-- (total is an exact multiple of 50) and specified-page scans (Sniper) are
+	-- legitimately allowed to be empty and must not be retried here.
+	if private.query._specifiedPage or (private.query._page or 0) ~= 0 then
+		private.classicEmptyRetries = 0
+		return "OK"
+	end
+	if (AuctionHouse.GetNumAuctions() or 0) > 0 then
+		private.classicEmptyRetries = 0
+		return "OK"
+	end
+	if private.classicEmptyRetries >= CLASSIC_EMPTY_PAGE_MAX_RETRIES then
+		-- Genuinely empty result (no matching lots) - accept it.
+		private.classicEmptyRetries = 0
+		return "OK"
+	end
+	private.classicEmptyRetries = private.classicEmptyRetries + 1
+	if private.classicEmptyRetries == CLASSIC_EMPTY_PAGE_HARD_RETRY_AT then
+		return "HARD"
+	end
+	return "SOFT"
 end
 
 function private.CheckBrowseResults()

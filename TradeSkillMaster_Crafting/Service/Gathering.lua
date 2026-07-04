@@ -55,13 +55,23 @@ function Gathering.OnInitialize(settingsDB)
 	end
 end
 
-function Gathering.OnEnable()
+-- 3.3.5: на этом бэкпорте TaskList.Gathering.OnEnable может вызвать CreateQuery раньше,
+-- чем Crafting.Gathering.OnEnable создаст private.db — отсюда была ошибка "index field 'db' (nil)".
+-- Создаём схему лениво (один раз), из OnEnable или из CreateQuery — что раньше.
+function private.EnsureDB()
+	if private.db then
+		return
+	end
 	private.db = Database.NewSchema("GATHERING_MATS")
 		:AddUniqueStringField("itemString")
 		:AddNumberField("numNeed")
 		:AddNumberField("numHave")
 		:AddStringField("sourcesStr")
 		:Commit()
+end
+
+function Gathering.OnEnable()
+	private.EnsureDB()
 	private.queuedCraftsUpdateQuery = TSM.Crafting.CreateQueuedCraftsQuery()
 		:SetUpdateCallback(Gathering.OnQueuedCraftsUpdated)
 	Gathering.OnQueuedCraftsUpdated()
@@ -79,6 +89,7 @@ function Gathering.SetContextChangedCallback(callback)
 end
 
 function Gathering.CreateQuery()
+	private.EnsureDB()
 	return private.db:NewQuery()
 end
 

@@ -334,6 +334,18 @@ function private.ScanThread(auctionScan, scanContext)
 	if #private.itemList == 0 then
 		return
 	end
+	-- 3.3.5 fix: bagCounts is a hash table, so the pairs() loop above builds itemList
+	-- in an arbitrary (hash-bucket) order. On classic the scan posts items strictly in
+	-- itemList order, so the post queue jumped around (item1, item2, item15, item3, ...)
+	-- instead of following the visible "Items to post" list. That list is sorted by item
+	-- name by default, so order itemList the same way (stable itemString tiebreak) so
+	-- posting follows the list order.
+	local nameLookup = TempTable.Acquire()
+	for _, itemString in ipairs(private.itemList) do
+		nameLookup[itemString] = ItemInfo.GetName(itemString) or ""
+	end
+	Table.SortWithValueLookup(private.itemList, nameLookup, false)
+	TempTable.Release(nameLookup)
 	-- record this search
 	TSM.Auctioning.SavedSearches.RecordSearch(scanContext, scanContext.isItems and "postItems" or "postGroups")
 

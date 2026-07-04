@@ -85,10 +85,26 @@ end
 
 function private.ScriptHandlerCommon(script, frame, ...)
 	local key = private.GetFrameScriptKey(frame, script)
+	local handler = private.handlers[key]
+	if not handler then
+		-- 3.3.5a backport: the shared per-script wrapper can stay attached to a pooled/
+		-- recycled frame after its handler bookkeeping was already removed (e.g. a frame
+		-- that was torn down with a raw SetScript, or a double-release during UI teardown /
+		-- nav-tab switches). Calling a nil handler here throws on every fire and, for a
+		-- script like OnUpdate, spams the error frame forever (count keeps growing). Self-
+		-- heal instead: detach the stale wrapper from this frame and drop the leftover
+		-- bookkeeping so it can't fire again.
+		if type(frame) == "table" and type(frame.SetScript) == "function" then
+			frame:SetScript(script, nil)
+		end
+		private.objLookup[key] = nil
+		private.debugNameObj[key] = nil
+		return
+	end
 	local obj = private.objLookup[key]
 	private.nestedLevel = private.nestedLevel + 1
 	local startTime = LibTSMWoW.GetTime()
-	private.handlers[key](obj, ...)
+	handler(obj, ...)
 	local timeTaken = LibTSMWoW.GetTime() - startTime
 	private.nestedLevel = private.nestedLevel - 1
 	if private.nestedLevel == 0 and timeTaken > TIME_WARNING_THRESHOLD then

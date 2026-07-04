@@ -162,7 +162,7 @@ function VendorBuyScrollTable.__protected:_HandleRowClick(row, mouseButton)
 		self:GetBaseElement():ShowDialogFrame(dialogFrame)
 		dialogFrame:GetElement("qty.input"):SetFocused(true)
 	elseif mouseButton == "RightButton" then
-		Vendor.BuyIndex(dbRow:GetFields("index", "stackSize"))
+		Vendor.BuyIndex(dbRow:GetFields("index", "stackSize", "itemString"))
 	else
 		return
 	end

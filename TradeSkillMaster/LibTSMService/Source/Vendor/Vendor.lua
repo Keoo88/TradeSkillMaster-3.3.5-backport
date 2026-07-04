@@ -85,10 +85,11 @@ end
 ---Buys an item from the vendor.
 ---@param index number The index of the item to buy
 ---@param quantity number The quantity to buy
-function Vendor.BuyIndex(index, quantity)
+---@param itemString? string The intended item (guards against the merchant slot shifting)
+function Vendor.BuyIndex(index, quantity, itemString)
 	quantity = min(quantity, BuyScanner.GetNumCanAfford(index))
 	if quantity == 0 then
 		return
 	end
-	Buy.BuyIndex(index, quantity)
+	Buy.BuyIndex(index, quantity, itemString)
 end

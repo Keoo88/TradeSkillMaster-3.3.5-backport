@@ -10,6 +10,7 @@ local Spell = LibTSMWoW:Include("API.Spell")
 local SlotId = LibTSMWoW:Include("Type.SlotId")
 local ClientInfo = LibTSMWoW:Include("Util.ClientInfo")
 local Item = LibTSMWoW:Include("API.Item")
+local Container = LibTSMWoW:Include("API.Container")
 local EnumType = LibTSMWoW:From("LibTSMUtil"):Include("BaseType.EnumType")
 local private = {
 	buggedQuantityRangeSpells = {},
@@ -638,8 +639,50 @@ function TradeSkill.GetRequiredTool(spellId)
 		else
 			toolsStr, hasTools = GetTradeSkillTools(spellId)
 		end
-		return not hasTools and toolsStr or nil
+		local needed = (not hasTools) and toolsStr or nil
+		-- 3.3.5/Warmane: флаг hasTools у GetTradeSkillTools/GetCraftSpellFocus для НОСИМЫХ
+		-- инструментов (Blacksmith Hammer, зачаровательский стержень и т.п.) бывает ложно
+		-- пустым, даже когда инструмент лежит в сумках, из-за чего крафт ошибочно требовал
+		-- «нужен инструмент». Если игрок реально держит все перечисленные инструменты в сумках
+		-- — снимаем требование. Стационарные объекты (наковальня/горн) в сумках не находятся,
+		-- поэтому для них поведение не меняется.
+		if needed and needed ~= "" and private.HasAllToolsInBags(needed) then
+			needed = nil
+		end
+		return (needed and needed ~= "") and needed or nil
 	end
+end
+
+---Returns whether the player currently has all of the named tools in their bags.
+---@param toolsStr string A comma-separated list of tool names
+---@return boolean
+function private.HasAllToolsInBags(toolsStr)
+	for toolName in gmatch(toolsStr, "[^,]+") do
+		toolName = strtrim(toolName)
+		if toolName ~= "" and not private.HasToolItemInBags(toolName) then
+			return false
+		end
+	end
+	return true
+end
+
+---Returns whether the player has an item with the given name in their bags.
+---@param toolName string The tool item name
+---@return boolean
+function private.HasToolItemInBags(toolName)
+	for bag = 0, Container.GetNumBags() do
+		local numSlots = Container.GetNumSlots(bag)
+		for slot = 1, numSlots do
+			local link = Container.GetItemLink(bag, slot)
+			if link then
+				local name = GetItemInfo(link)
+				if name and name == toolName then
+					return true
+				end
+			end
+		end
+	end
+	return false
 end
 
 ---Gets the number of materials for a recipe.

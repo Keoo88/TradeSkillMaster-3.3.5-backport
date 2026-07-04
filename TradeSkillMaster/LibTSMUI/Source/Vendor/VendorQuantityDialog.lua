@@ -207,6 +207,6 @@ function VendorQuantityDialog.__private:_HandleMaxBtnClick(button)
 end
 
 function VendorQuantityDialog.__private:_HandlePurchaseBtnClick(button)
-	Vendor.BuyIndex(self._index, button:GetElement("__parent.qty.input"):GetValue())
+	Vendor.BuyIndex(self._index, button:GetElement("__parent.qty.input"):GetValue(), self._itemString)
 	self:_CloseDialog()
 end
