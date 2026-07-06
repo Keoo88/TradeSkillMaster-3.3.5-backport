@@ -41,12 +41,27 @@ function Commands.OnInitialize(settingsDB)
 	SlashCommands.Register("price", private.TestPriceSource, L["Allows for testing of custom prices"])
 	SlashCommands.Register("profile", private.ChangeProfile, L["Changes to the specified profile (i.e. '/tsm profile Default' changes to the 'Default' profile)"])
 	SlashCommands.Register("destroy", TSM.UI.DestroyingUI.Toggle, L["Opens the Destroying frame if there are items in your bags to be destroyed."])
-	if TSM.UI.CraftingUI then SlashCommands.Register("crafting", TSM.UI.CraftingUI.Toggle, L["Toggles the TSM Crafting UI."]) end
+	-- 3.3.5 backport fix: module addons (TSM_Crafting, TSM_Banking, ...) load AFTER the
+	-- main addon, so at OnInitialize time TSM.Crafting / TSM.Banking / TSM.UI.CraftingUI
+	-- were always nil and these slash commands were silently never registered
+	-- (/tsm crafting, /tsm bankui, /tsm get, /tsm put, /tsm restock_help did nothing).
+	-- Register them unconditionally with lazy dispatch that resolves the module at call
+	-- time and prints a helpful message if the module addon isn't loaded.
+	local function LazyCommand(getFunc, moduleAddonName)
+		return function(...)
+			local func = getFunc()
+			if func then
+				return func(...)
+			end
+			ChatMessage.PrintfUser("This command requires the %s addon to be loaded.", moduleAddonName)
+		end
+	end
+	SlashCommands.Register("crafting", LazyCommand(function() return TSM.UI.CraftingUI and TSM.UI.CraftingUI.Toggle end, "TSM_Crafting"), L["Toggles the TSM Crafting UI."])
 	SlashCommands.Register("tasklist", TSM.UI.TaskListUI.Toggle, L["Toggles the TSM Task List UI"])
-	if TSM.UI.BankingUI then SlashCommands.Register("bankui", TSM.UI.BankingUI.Toggle, L["Toggles the TSM Banking UI if either the bank or guild bank is currently open."]) end
-	if TSM.Banking then SlashCommands.Register("get", TSM.Banking.GetByFilter, L["Gets items from the bank or guild bank matching the item or partial text entered."]) end
-	if TSM.Banking then SlashCommands.Register("put", TSM.Banking.PutByFilter, L["Puts items matching the item or partial text entered into the bank or guild bank."]) end
-	if TSM.Crafting then SlashCommands.Register("restock_help", TSM.Crafting.RestockHelp, L["Tells you why a specific item is not being restocked and added to the queue."]) end
+	SlashCommands.Register("bankui", LazyCommand(function() return TSM.UI.BankingUI and TSM.UI.BankingUI.Toggle end, "TSM_Banking"), L["Toggles the TSM Banking UI if either the bank or guild bank is currently open."])
+	SlashCommands.Register("get", LazyCommand(function() return TSM.Banking and TSM.Banking.GetByFilter end, "TSM_Banking"), L["Gets items from the bank or guild bank matching the item or partial text entered."])
+	SlashCommands.Register("put", LazyCommand(function() return TSM.Banking and TSM.Banking.PutByFilter end, "TSM_Banking"), L["Puts items matching the item or partial text entered into the bank or guild bank."])
+	SlashCommands.Register("restock_help", LazyCommand(function() return TSM.Crafting and TSM.Crafting.RestockHelp end, "TSM_Crafting"), L["Tells you why a specific item is not being restocked and added to the queue."])
 	SlashCommands.RegisterDebug("logging", private.ToggleLogging)
 	SlashCommands.RegisterDebug("clearcraftdb", private.ClearCraftDB)
 	SlashCommands.RegisterDebug("leaks", private.EnableLeakDebug)
