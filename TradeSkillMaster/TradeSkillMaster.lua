@@ -18,6 +18,8 @@ local ItemFilter = TSM.LibTSMService:IncludeClassType("ItemFilter")
 local VendorBuy = TSM.LibTSMService:Include("Item.VendorBuy")
 local Sync = TSM.LibTSMService:Include("Sync")
 local Inventory = TSM.LibTSMApp:Include("Service.Inventory")
+local Conversions = TSM.LibTSMApp:Include("Service.Conversions")
+local Conversion = TSM.LibTSMTypes:Include("Item.Conversion")
 local L = TSM.Locale.GetTable()
 local CustomStringFormat = TSM.LibTSMUI:Include("Util.CustomStringFormat")
 local private = {
@@ -228,16 +230,33 @@ function TSM.OnInitialize(settingsDB)
 	end
 
 	-- Accounting sources
-	if TSM.Accounting then
-		CustomString.RegisterSource("Accounting", "AvgSell", L["Avg Sell Price"], TSM.Accounting.Transactions.GetAverageSalePrice, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "MaxSell", L["Max Sell Price"], TSM.Accounting.Transactions.GetMaxSalePrice, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "MinSell", L["Min Sell Price"], TSM.Accounting.Transactions.GetMinSalePrice, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "AvgBuy", L["Avg Buy Price"], TSM.Accounting.Transactions.GetAverageBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "SmartAvgBuy", L["Smart Avg Buy Price"], TSM.Accounting.Transactions.GetSmartAverageBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "MaxBuy", L["Max Buy Price"], TSM.Accounting.Transactions.GetMaxBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "MinBuy", L["Min Buy Price"], TSM.Accounting.Transactions.GetMinBuyPrice, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "NumExpires", L["Expires Since Last Sale"], TSM.Accounting.Auctions.GetNumExpiresSinceSale, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Accounting", "SaleRate", L["Sale Rate"], TSM.Accounting.GetSaleRate, CustomString.SOURCE_TYPE.NORMAL)
+	-- 3.3.5 backport fix: in this backport, Accounting lives in a separate addon
+	-- (TradeSkillMaster_Accounting) which loads AFTER the main addon, so at
+	-- OnInitialize time TSM.Accounting is always nil and the `if TSM.Accounting then`
+	-- guard made AvgBuy/AvgSell/etc never register ("'avgbuy' is not a valid source").
+	-- Register the sources unconditionally with lazy lookups that resolve the module
+	-- at evaluation time (returning nil if the Accounting addon is disabled).
+	do
+		local function LazyTransactions(funcName)
+			return function(itemString)
+				local Transactions = TSM.Accounting and TSM.Accounting.Transactions
+				return Transactions and Transactions[funcName](itemString) or nil
+			end
+		end
+		CustomString.RegisterSource("Accounting", "AvgSell", L["Avg Sell Price"], LazyTransactions("GetAverageSalePrice"), CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MaxSell", L["Max Sell Price"], LazyTransactions("GetMaxSalePrice"), CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MinSell", L["Min Sell Price"], LazyTransactions("GetMinSalePrice"), CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "AvgBuy", L["Avg Buy Price"], LazyTransactions("GetAverageBuyPrice"), CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "SmartAvgBuy", L["Smart Avg Buy Price"], LazyTransactions("GetSmartAverageBuyPrice"), CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MaxBuy", L["Max Buy Price"], LazyTransactions("GetMaxBuyPrice"), CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "MinBuy", L["Min Buy Price"], LazyTransactions("GetMinBuyPrice"), CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "NumExpires", L["Expires Since Last Sale"], function(itemString)
+			local Auctions = TSM.Accounting and TSM.Accounting.Auctions
+			return Auctions and Auctions.GetNumExpiresSinceSale(itemString) or nil
+		end, CustomString.SOURCE_TYPE.NORMAL)
+		CustomString.RegisterSource("Accounting", "SaleRate", L["Sale Rate"], function(itemString)
+			return TSM.Accounting and TSM.Accounting.GetSaleRate(itemString) or nil
+		end, CustomString.SOURCE_TYPE.NORMAL)
 		CustomStringFormat.SetFormat("NumExpires", CustomStringFormat.FORMAT.NUMBER)
 		CustomStringFormat.SetFormat("SaleRate", CustomStringFormat.FORMAT.NUMBER)
 	end
@@ -278,13 +297,58 @@ function TSM.OnInitialize(settingsDB)
 	CustomStringFormat.SetFormat("DBRegionSoldPerDay", CustomStringFormat.FORMAT.NUMBER)
 
 	-- Crafting sources
-	if TSM.Crafting then
+	-- 3.3.5 backport fix: the Crafting module was removed from this backport, so the
+	-- "Destroy" source was never registered (the `if TSM.Crafting then` block below never
+	-- ran) and Destroy always evaluated to nil, which made the DE scan find nothing.
+	-- Compute the destroy (disenchant/mill/prospect/transform) value directly from the
+	-- conversion data instead of going through the removed Crafting module.
+	do
 		local function GetDestroyValue(itemString)
-			return TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
+			local sourceKey = private.settings.destroyValueSource
+			if not sourceKey then
+				return nil
+			end
+			-- Disenchant value
+			if ItemInfo.IsDisenchantable(itemString) then
+				local classId = ItemInfo.GetClassId(itemString)
+				local quality = ItemInfo.GetQuality(itemString)
+				local itemLevel = ItemInfo.GetItemLevel(itemString)
+				if classId and quality and itemLevel then
+					local value = 0
+					for targetItemString in Conversion.DisenchantTargetItemIterator() do
+						local amountOfMats = Conversions.GetDisenchantTargetItemSourceInfo(targetItemString, classId, quality, itemLevel, nil)
+						if amountOfMats then
+							local matValue = CustomString.GetSourceValue(sourceKey, targetItemString) or 0
+							value = value + matValue * amountOfMats
+						end
+					end
+					value = floor(value)
+					if value > 0 then
+						return value
+					end
+				end
+			end
+			-- Mill / prospect / transform / vendor trade value
+			local value = 0
+			for targetItemString, rate in Conversion.TargetItemsByMethodIterator(itemString, nil) do
+				local matValue = CustomString.GetSourceValue(sourceKey, targetItemString) or 0
+				value = value + matValue * rate
+			end
+			value = floor(value)
+			return value > 0 and value or nil
 		end
 		CustomString.RegisterSource("Crafting", "Destroy", L["Destroy Value"], GetDestroyValue, CustomString.SOURCE_TYPE.NORMAL)
-		CustomString.RegisterSource("Crafting", "Crafting", L["Crafting Cost"], TSM.Crafting.Cost.GetLowestCostByItem, CustomString.SOURCE_TYPE.VOLATILE)
-		CustomString.RegisterSource("Crafting", "MatPrice", L["Crafting Material Cost"], TSM.Crafting.Cost.GetMatCost, CustomString.SOURCE_TYPE.VOLATILE)
+		-- 3.3.5 backport fix: same load-order issue as Accounting - the Crafting module
+		-- (TradeSkillMaster_Crafting) loads after the main addon, so TSM.Crafting is nil
+		-- here and "Crafting"/"MatPrice" were never registered. Register them lazily.
+		CustomString.RegisterSource("Crafting", "Crafting", L["Crafting Cost"], function(itemString)
+			local Cost = TSM.Crafting and TSM.Crafting.Cost
+			return Cost and Cost.GetLowestCostByItem(itemString) or nil
+		end, CustomString.SOURCE_TYPE.VOLATILE)
+		CustomString.RegisterSource("Crafting", "MatPrice", L["Crafting Material Cost"], function(itemString)
+			local Cost = TSM.Crafting and TSM.Crafting.Cost
+			return Cost and Cost.GetMatCost(itemString) or nil
+		end, CustomString.SOURCE_TYPE.VOLATILE)
 		CustomString.InvalidateCache("Destroy")
 	end
 
