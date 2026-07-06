@@ -80,10 +80,10 @@ local function FormatProgressLine(prefix, doneCount, totalCount)
 end
 
 local GETALL_TIMEOUT = 15 -- seconds for getAll to respond
-local PAGE_TIMEOUT = 30 -- seconds for single page to respond
+local PAGE_TIMEOUT = 90 -- seconds for single page to respond (increased for slow private server response)
 local NEXT_PAGE_DELAY = 0 -- query next page immediately, server throttle gates real send rate
 local THROTTLE_RETRY = 0.03 -- legacy C_Timer fallback (used only if frame poll fails)
-local THROTTLE_MAX_WAIT = 30 -- seconds max wait for throttle clear before abort
+local THROTTLE_MAX_WAIT = 90 -- seconds max wait for throttle clear before abort (increased for slow private server throttle)
 local PAGE_SIZE = 50
 -- Bypass probe: fire QueryAuctionItems immediately without waiting for CanSendAuctionQuery().
 -- Private servers often have a shorter server-side throttle than the 1.5s client timer.
@@ -314,6 +314,19 @@ end
 -- GetAll Scan (fast mode)
 -- ============================================================================
 
+function private.FallbackToPagedScan(reason)
+	if private.scanState ~= "querying" or private.mode ~= "getAll" then
+		return
+	end
+	private.UnregisterGetAll()
+	private.SafeUpdateUI(reason, 0.05)
+	C_Timer.After(0.2, function()
+		if private.scanState == "querying" and private.mode == "getAll" then
+			private.StartPagedScanImpl()
+		end
+	end)
+end
+
 function private.StartGetAllScan()
 	private.scanState = "querying"
 	private.mode = "getAll"
@@ -336,12 +349,11 @@ function private.StartGetAllScan()
 	private.getAllRegistered = true
 	QueryAuctionItems(nil, nil, nil, nil, nil, nil, 0, nil, nil, true)
 
-	-- Timeout: if getAll doesn't respond, abort (user can try Slow Scan)
+	-- If getAll doesn't respond or returns an empty list, fall back to the classic paged scan.
 	C_Timer.After(GETALL_TIMEOUT, function()
 		if private.scanState == "querying" and private.mode == "getAll" and private.timeoutToken == myToken then
-			ChatMessage.PrintfUser("Server didn't respond to Fast Scan. Try Slow Scan.")
-			private.UnregisterGetAll()
-			private.AbortScan()
+			ChatMessage.PrintfUser("Fast Scan returned no data or timed out. Falling back to Slow Scan.")
+			private.FallbackToPagedScan("Fast Scan timed out; switching to Slow Scan...")
 		end
 	end)
 end
@@ -352,8 +364,8 @@ function private.OnGetAllResult()
 
 	local numBatch = GetNumAuctionItems("list")
 	if numBatch == 0 then
-		private.SafeUpdateUI("No auctions found.", 0)
-		private.scanState = nil
+		ChatMessage.PrintfUser("Fast Scan returned no data. Falling back to Slow Scan.")
+		private.FallbackToPagedScan("Fast Scan returned no data; switching to Slow Scan...")
 		return
 	end
 
