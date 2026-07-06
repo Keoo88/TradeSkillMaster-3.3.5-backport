@@ -112,6 +112,10 @@ function Groups.OnInitialize(settingsDB)
 end
 
 function Groups.ShowGroupSettings(baseFrame, groupPath)
+	if not baseFrame then
+		return
+	end
+	baseFrame = baseFrame:GetBaseElement()
 	baseFrame:SetSelectedNavButton(L["Groups"], true)
 	baseFrame:GetElement("content.groups.groupSelection.groupTree"):SetSelectedGroup(groupPath, true)
 end
