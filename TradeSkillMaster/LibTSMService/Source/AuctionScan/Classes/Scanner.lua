@@ -29,6 +29,7 @@ local private = {
 	searchRow = nil,
 	useCachedData = nil,
 	retryCount = 0,
+	browseEmptyRetryCount = 0,
 	requestFuture = Future.New("AUCTION_SCANNER_FUTURE"),
 	requestResult = nil,
 	fsm = nil,
@@ -36,23 +37,19 @@ local private = {
 	doneTimer = nil,
 	updateTimer = nil,
 	missingItemIds = {},
-	classicEmptyRetries = 0,
+	-- 3.3.5 diagnostics: per-scan counters for the classic browse processing
+	-- pipeline (printed for traced queries, e.g. DE scan)
+	classicStats = { seen = 0, noInfo = 0, noLink = 0, badLink = 0, nameSkip = 0, earlyReject = 0, added = 0 },
 }
 local BROWSE_MISSING_INFO_RETRY_DELAY = 0.5
+local BROWSE_EMPTY_RETRY_DELAY = 0.25
+local BROWSE_EMPTY_RETRY_MAX = 12
 local SEARCH_NOT_READY_RETRY_DELAY = 0.1
 local SEARCH_MISSING_ITEM_INFO_RETRY_DELAY = 0.1
 local SEARCH_AH_NOT_READY_RETRY_DELAY = 0.5
 local SEARCH_MISSING_INFO_RETRY_DELAY = 0.5
 local FUTURE_FAILED_RETRY_DELAY = 0.1
 local SORT_RETRY_DELAY = 0.5
-
--- 3.3.5: bounded retry for a premature/empty AUCTION_ITEM_LIST_UPDATE that
--- resolves the browse query future before the server sends the real page.
--- Mirrors LibAuctionScan (TSM 2.8) soft/hard retry on bad/incomplete data so a
--- scan is never finalized on an empty page that's really still loading.
-local CLASSIC_EMPTY_PAGE_RETRY_DELAY = 0.3
-local CLASSIC_EMPTY_PAGE_MAX_RETRIES = 8
-local CLASSIC_EMPTY_PAGE_HARD_RETRY_AT = 4
 
 
 
@@ -102,7 +99,7 @@ Scanner:OnModuleLoad(function()
 				private.searchRow = nil
 				private.callback = nil
 				private.retryCount = 0
-				private.classicEmptyRetries = 0
+				private.browseEmptyRetryCount = 0
 				private.retryTimer:Cancel()
 				if private.pendingFuture then
 					private.pendingFuture:Cancel()
@@ -114,6 +111,8 @@ Scanner:OnModuleLoad(function()
 			:AddTransition("ST_SEARCH_GET_KEY")
 			:AddEvent("EV_START_BROWSE", function(_, query, resolveSellers, callback)
 				assert(not private.query)
+				-- Debug output disabled for EV_START_BROWSE to reduce chat spam
+				-- print(string.format("TSM:EV_START_BROWSE query._str=%s", tostring(query._str)))
 				private.query = query
 				private.resolveSellers = resolveSellers
 				private.browseId = private.browseId + 1
@@ -184,25 +183,12 @@ Scanner:OnModuleLoad(function()
 		)
 		:AddState(FSM.NewState("ST_BROWSE_CHECKING")
 			:SetOnEnter(function()
+				-- Debug output disabled for ST_BROWSE_CHECKING to reduce chat spam
+				-- print(string.format("TSM:ST_BROWSE_CHECKING browseIndex=%d numAuctions=%d", private.browseIndex, AuctionHouse.GetNumAuctions() or 0))
 				if not private.query:_BrowseIsPageValid() then
 					-- This page isn't valid, so go to the next page
 					return "ST_BROWSE_REQUEST_MORE"
-				end
-				-- 3.3.5: guard against a premature/empty AUCTION_ITEM_LIST_UPDATE that
-				-- resolves the browse query future before the server actually sends the
-				-- requested page. Without this, an empty first page is accepted as "no
-				-- results" and the scan finishes with nothing; the real update then
-				-- arrives while the FSM is already idle and gets dropped -> intermittent
-				-- "sometimes scans, sometimes not". Mirrors LibAuctionScan (TSM 2.8).
-				local classicAction = private.ClassicEmptyPageGuard()
-				if classicAction == "SOFT" then
-					private.retryTimer:RunForTime(CLASSIC_EMPTY_PAGE_RETRY_DELAY)
-					return
-				elseif classicAction == "HARD" then
-					-- The query may have been dropped by the server; re-send it.
-					return "ST_BROWSE_SEND"
-				end
-				if not private.CheckBrowseResults() then
+				elseif not private.CheckBrowseResults() then
 					-- Results aren't valid yet, so check again
 					private.retryTimer:RunForTime(BROWSE_MISSING_INFO_RETRY_DELAY)
 					return
@@ -219,7 +205,6 @@ Scanner:OnModuleLoad(function()
 					return "ST_BROWSE_REQUEST_MORE"
 				end
 			end)
-			:AddTransition("ST_BROWSE_SEND")
 			:AddTransition("ST_BROWSE_CHECKING")
 			:AddTransition("ST_BROWSE_DONE")
 			:AddTransition("ST_BROWSE_REQUEST_MORE")
@@ -678,46 +663,25 @@ function private.CalcMarketValue(prices)
 	return floor(sum / cut + 0.5)
 end
 
--- 3.3.5: decide whether the current (classic) browse page is real data or a
--- premature/empty AUCTION_ITEM_LIST_UPDATE. Returns:
---   "OK"   -> page has data (or out of retries / not applicable), proceed
---   "SOFT" -> empty page; wait briefly and re-check (real update likely en route)
---   "HARD" -> empty for too long; re-send the query (it may have been dropped)
--- Mirrors LibAuctionScan (TSM 2.8), which never finalizes a scan on an empty or
--- incomplete page and instead soft/hard-retries up to maxRetries.
-function private.ClassicEmptyPageGuard()
-	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
-		return "OK"
-	end
-	-- Only guard the initial page of a normal browse. Later pages ending empty
-	-- (total is an exact multiple of 50) and specified-page scans (Sniper) are
-	-- legitimately allowed to be empty and must not be retried here.
-	if private.query._specifiedPage or (private.query._page or 0) ~= 0 then
-		private.classicEmptyRetries = 0
-		return "OK"
-	end
-	if (AuctionHouse.GetNumAuctions() or 0) > 0 then
-		private.classicEmptyRetries = 0
-		return "OK"
-	end
-	if private.classicEmptyRetries >= CLASSIC_EMPTY_PAGE_MAX_RETRIES then
-		-- Genuinely empty result (no matching lots) - accept it.
-		private.classicEmptyRetries = 0
-		return "OK"
-	end
-	private.classicEmptyRetries = private.classicEmptyRetries + 1
-	if private.classicEmptyRetries == CLASSIC_EMPTY_PAGE_HARD_RETRY_AT then
-		return "HARD"
-	end
-	return "SOFT"
-end
-
 function private.CheckBrowseResults()
-	TSMDBG.Time("Scanner:CheckBrowseResults")
 	if not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		-- Process as many auctions as we can
 		local numAuctions = AuctionHouse.GetNumAuctions()
-		TSMDBG.Log("Scanner", "CheckBrowseResults numAuctions=%d browseIndex=%d pending=%d", numAuctions or 0, private.browseIndex, #private.browsePendingIndexes)
+		if private.browseIndex == 1 and #private.browsePendingIndexes == 0 then
+			-- new scan starting: reset the diagnostics counters
+			local cs = private.classicStats
+			cs.seen, cs.noInfo, cs.noLink, cs.badLink, cs.nameSkip, cs.earlyReject, cs.added = 0, 0, 0, 0, 0, 0, 0
+		end
+		-- Some 3.3.5a cores briefly return an empty page right after a browse query.
+		-- Retry a few times instead of immediately showing an empty result set.
+		if numAuctions > 0 then
+			private.browseEmptyRetryCount = 0
+		elseif private.query and private.query._str and private.query._str ~= "" and private.browseEmptyRetryCount < BROWSE_EMPTY_RETRY_MAX then
+			private.browseEmptyRetryCount = private.browseEmptyRetryCount + 1
+			private.retryTimer:RunForTime(BROWSE_EMPTY_RETRY_DELAY)
+			TSMDBG.Log("Scanner", "Classic browse returned empty page; retrying (%d/%d)", private.browseEmptyRetryCount, BROWSE_EMPTY_RETRY_MAX)
+			return false
+		end
 		for i = #private.browsePendingIndexes, 1, -1 do
 			local index = private.browsePendingIndexes[i]
 			if private.ProcessBrowseResultClassic(index) then
@@ -733,7 +697,6 @@ function private.CheckBrowseResults()
 		end
 		private.browseIndex = index
 		if private.browseIndex <= numAuctions or #private.browsePendingIndexes > 0 then
-			TSMDBG.TimeEnd("Scanner:CheckBrowseResults")
 			return false
 		end
 	end
@@ -777,19 +740,48 @@ function private.CheckBrowseResults()
 end
 
 function private.ProcessBrowseResultClassic(index)
+	local cs = private.classicStats
+	cs.seen = cs.seen + 1
 	local rawName, itemLink, stackSize, timeLeft, buyout, seller = AuctionHouse.GetBrowseResult(index)
-	local baseItemString = ItemString.GetBase(itemLink)
-	if index <= 3 then
-		TSMDBG.Log("Scanner", "ProcessBrowseResultClassic idx=%d name=%s link=%s stack=%s tl=%s buy=%s seller=%s base=%s",
-			index, tostring(rawName), tostring(itemLink), tostring(stackSize), tostring(timeLeft), tostring(buyout), tostring(seller), tostring(baseItemString))
-	end
-	if not rawName or rawName == "" or not baseItemString or not buyout or not stackSize or not timeLeft then
+	
+	if not rawName or rawName == "" or not buyout or not stackSize or not timeLeft then
+		cs.noInfo = cs.noInfo + 1
 		return false
 	end
+
+	-- 3.3.5: Фильтруем по поисковой строке прямо здесь, как в Auctionator (не добавляем в browseResults, если не совпадает)
+	if private.query._str and private.query._str ~= "" then
+		local nameLower = strlower(rawName)
+		if private.query._exact then
+			if nameLower ~= private.query._strLower then
+				cs.nameSkip = cs.nameSkip + 1
+				return true
+			end
+		else
+			if not strfind(nameLower, private.query._strLower, 1, true) then
+				cs.nameSkip = cs.nameSkip + 1
+				return true
+			end
+		end
+	end
+
+
+	if not itemLink then
+		cs.noLink = cs.noLink + 1
+		return false
+	end
+
+	local baseItemString = ItemString.GetBase(itemLink)
+	if not baseItemString then
+		cs.badLink = cs.badLink + 1
+		return false
+	end
+
 	-- getAll dumps the whole AH; skip items not in the requested set early so we don't
 	-- spend cycles populating SubRows for 50k irrelevant lots.
 	local items = private.query._items
 	if next(items) and not items[baseItemString] then
+		cs.earlyReject = cs.earlyReject + 1
 		return true
 	end
 	if not seller and private.resolveSellers then
@@ -798,11 +790,8 @@ function private.ProcessBrowseResultClassic(index)
 	private.query:_ProcessBrowseResult(baseItemString, itemLink)
 	local row = private.query:_GetBrowseResults(baseItemString)
 	row:PopulateSubRows(private.browseId, index, itemLink)
-	local missingData = false
-	for _, subRow in row:SubRowIterator() do
-		if not subRow:HasRawData() then
-			missingData = true
-		end
-	end
-	return not missingData
+	cs.added = cs.added + 1
+	-- Classic browse rows always have raw data for newly populated listings,
+	-- so no need to scan all existing subRows on every auction index.
+	return true
 end
