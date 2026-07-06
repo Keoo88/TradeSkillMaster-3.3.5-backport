@@ -24,6 +24,9 @@ local ObjectPool = LibTSMService:From("LibTSMUtil"):IncludeClassType("ObjectPool
 local private = {
 	objectPool = ObjectPool.New("AUCTION_SCAN_MANAGER", AuctionScanManager, 1),
 }
+-- Toggle POC fast per-item find (opt-in). Set to true to enable lightweight per-item
+-- queries that avoid building full AuctionQuery browse results. Useful for testing.
+local FAST_FIND_POC = true
 -- Arbitrary estimate that finishing the browse request is worth 10% of the query's progress
 local BROWSE_PROGRESS = 0.1
 local ACTION_SCRIPTS = { OnProgressUpdate = true, OnQueryDone = true, OnCurrentSearchChanged = true, OnNumItemsChanged = true }
@@ -709,25 +712,31 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 				return nil
 			end
 			local nameStr = ItemInfo.GetName(itemString) or row._itemLink and row._itemLink:match("%[(.-)%]") or ""
-			-- 3.3.5: NAME-only exact query. Do NOT add SetClass / SetQualityRange /
-			-- SetLevelRange here. On 3.3.5 the AH class/subclass filter args are auction
-			-- CATEGORY indices (not item class ids), so SetClass makes QueryAuctionItems
-			-- return 0 auctions. This fallback runs whenever the lot is no longer on the
-			-- visible page (e.g. the page got refreshed after buying the previous lot),
-			-- so a broken query here makes the find return nil and the lot "vanishes"
-			-- from the results. Exact name + SetItems locates the lot reliably.
-			self._findQuery = AuctionQuery.Get():SetStr(nameStr, true)
-				:SetItems(itemString)
-				:SetResolveSellers(not passFlag)
-				:SetPage(page)
-			local filterSuccess = self:_DoBrowse(self._findQuery)
-			if self._findQuery then
-				self._findQuery:Release()
-				self._findQuery = nil
-			end
-			if not filterSuccess then
-				break
-			end
+				-- 3.3.5: NAME-only exact query. Prefer a lightweight path when POC enabled.
+				if FAST_FIND_POC then
+					-- Use a direct classic query with price sort and scan native browse results
+					-- to avoid building full Query/AuctionRow objects.
+					AuctionHouseWrapper.SetSort(true, true)
+					local future = AuctionHouseWrapper.SendQuery(nameStr, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true, page, nil)
+					local ok = Threading.WaitForFuture(future)
+					if not ok then
+						break
+					end
+				else
+					self._findQuery = AuctionQuery.Get():SetStr(nameStr, true)
+						:SetItems(itemString)
+						:SetResolveSellers(not passFlag)
+						:SetUsePriceSort(true)
+						:SetPage(page)
+					local filterSuccess = self:_DoBrowse(self._findQuery)
+					if self._findQuery then
+						self._findQuery:Release()
+						self._findQuery = nil
+					end
+					if not filterSuccess then
+						break
+					end
+				end
 			wipe(self._findResult)
 			if self:_FindAuctionOnCurrentPage(row, passFlag) then
 				-- 3.3.5 sniper buyout fix (part 2): the per-item query above just
@@ -764,6 +773,12 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 			elseif self._cancelled then
 				return nil
 			end
+
+			-- If the current page's last auction indicates the item cannot be on a later page,
+			-- stop early instead of scanning all pages.
+			if not self:_FindAuctionCanBeOnLaterPage(row) then
+				break
+			end
 			local numPages = AuctionHouse.GetNumPages()
 			maxPage = maxPage or (numPages - 1)
 			if page < maxPage then
@@ -794,7 +809,15 @@ function AuctionScanManager.__private:_FindAuctionCanBeOnLaterPage(row)
 	local _, _, stackSize, _, buyout, seller = AuctionHouse.GetBrowseResult(pageAuctions)
 
 	local itemBuyout = (buyout > 0) and floor(buyout / stackSize) or 0
+	if not row or type(row.GetBuyouts) ~= "function" then
+		-- If the row doesn't expose expected API (defensive), assume it may be
+		-- on a later page so we don't prematurely stop the find.
+		return true
+	end
 	local _, rowItemBuyout = row:GetBuyouts()
+	if not rowItemBuyout then
+		return true
+	end
 	if rowItemBuyout > itemBuyout then
 		-- Item must be on a later page since it would be sorted after the last auction on this page
 		return true
