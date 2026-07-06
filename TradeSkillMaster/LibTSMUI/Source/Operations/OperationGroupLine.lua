@@ -92,7 +92,7 @@ end
 
 function OperationGroupLine.__private:_ActionHandler(manager, state, action, ...)
 	if action == "ACTION_VIEW_GROUP" then
-		self:_SendActionScript("OnViewGroup", state.groupPath)
+		self:_SendActionScript("OnViewGroup", state.groupPath, self:GetBaseElement())
 	elseif action == "ACTION_REMOVE_GROUP" then
 		GroupOperation.Remove(state.groupPath, state.operationType, state.operationName)
 		self:_SendActionScript("OnRemoved", self)
