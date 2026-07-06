@@ -14,7 +14,9 @@ local private = {
 	cacheRequestWindowCount = 0,
 }
 local MAX_STACK_SIZE = 4000
-local MAX_ITEM_LEVEL = 700
+-- 3.3.5 backport fix: 700 is a retail value; the highest item level in WotLK is 284
+-- (Shadowmourne / late ICC gear). This drives the Advanced Search item level slider.
+local MAX_ITEM_LEVEL = 284
 local CACHE_REQUEST_COOLDOWN = 5
 local MAX_CACHE_REQUESTS_PER_SEC = 20
 
@@ -270,4 +272,43 @@ end
 ---@return number
 function Item.GetMaxItemLevel()
 	return MAX_ITEM_LEVEL
+end
+
+---Checks whether the player can use the item (3.3.5 backport).
+---The 3.3.5 server-side "usable" auction filter can't be relied on, so this scans a
+---hidden tooltip for red (unmet requirement) text, which is how the client itself
+---renders items you can't use (wrong class, level/skill too low, unknown recipe, etc).
+---@param link string The item link
+---@return boolean
+function Item.IsUsable(link)
+	if type(link) ~= "string" then
+		return true
+	end
+	if not private.usableScanTooltip then
+		private.usableScanTooltip = CreateFrame("GameTooltip", "TSMUsableScanTooltip", UIParent, "GameTooltipTemplate")
+	end
+	local tooltip = private.usableScanTooltip
+	tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+	local ok = pcall(tooltip.SetHyperlink, tooltip, link)
+	if not ok then
+		tooltip:Hide()
+		return true
+	end
+	local function IsRedLine(textObj)
+		local text = textObj and textObj:GetText()
+		if not text or text == "" then
+			return false
+		end
+		local r, g, b = textObj:GetTextColor()
+		-- The client colors unmet requirements red (RED_FONT_COLOR = 1.0, 0.1, 0.1)
+		return r and r > 0.9 and g < 0.2 and b < 0.2
+	end
+	for i = 2, tooltip:NumLines() do
+		if IsRedLine(_G["TSMUsableScanTooltipTextLeft"..i]) or IsRedLine(_G["TSMUsableScanTooltipTextRight"..i]) then
+			tooltip:Hide()
+			return false
+		end
+	end
+	tooltip:Hide()
+	return true
 end

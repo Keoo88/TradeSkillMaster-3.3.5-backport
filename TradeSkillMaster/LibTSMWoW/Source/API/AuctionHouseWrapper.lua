@@ -55,6 +55,7 @@ local OWNER_SORTS_TABLE = ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HO
 	{ sortOrder = Enum.AuctionHouseSortOrder.Name, reverseSort = false },
 	{ sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false },
 }
+local PRICE_BROWSE_SORTS_TABLE = { "unitprice" }
 local BROWSE_SORTS_TABLE = ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) and {
 		{ sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false },
 		{ sortOrder = Enum.AuctionHouseSortOrder.Name, reverseSort = false },
@@ -364,8 +365,23 @@ end
 ---@param page number The page
 ---@return Future?
 function AuctionHouseWrapper.SendQuery(str, class, subClass, invType, minLevel, maxLevel, minQuality, maxQuality, uncollected, usable, upgrades, exact, page, getAll)
-	if not private.CheckAllIdle() or not AuctionHouse.CanSendQuery() then
-		return
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		if not private.CheckAllIdle() then
+			return
+		end
+	else
+		if not AuctionHouse.CanSendQuery() then
+			Log.Warn("Classic auction query bypassing CanSendAuctionQuery() gate")
+		end
+		local queryWrapper = private.wrappers.QueryAuctionItems
+		if queryWrapper then
+			queryWrapper:CancelIfPending()
+		end
+		for _, wrapper in pairs(private.wrappers) do
+			if wrapper ~= queryWrapper and wrapper:_IsPending() then
+				wrapper:CancelIfPending()
+			end
+		end
 	end
 
 	-- Build the class filters
@@ -436,6 +452,16 @@ function AuctionHouseWrapper.SendQuery(str, class, subClass, invType, minLevel, 
 		local classIndex = nil
 		local subclassIndex = nil
 		local getAllFlag = getAll and true or nil
+		local qualityIndex = nil
+		local usableFlag = nil
+		if minQuality and minQuality > 0 then
+			qualityIndex = minQuality
+		end
+		if usable then
+			-- 3.3.5 backport fix: pass 1 (not true) to exactly match what the Blizzard
+			-- 3.3.5 AH UI sends (CheckButton:GetChecked() returns 1/nil on this client)
+			usableFlag = 1
+		end
 		if #classFiltersTemp > 0 then
 			local modernClassID = classFiltersTemp[1].classID
 			classIndex = MODERN_TO_AH_CLASSIC_INDEX[modernClassID]
@@ -446,7 +472,14 @@ function AuctionHouseWrapper.SendQuery(str, class, subClass, invType, minLevel, 
 			subclassIndex = nil
 			invTypeIndex = classFiltersTemp[1].inventoryType
 		end
-		return private.wrappers.QueryAuctionItems:Start(str, minLevel, maxLevel, invTypeIndex, classIndex, subclassIndex, page, usable, minQuality, getAllFlag)
+		-- Debug output disabled for classic SendQuery to reduce chat spam
+		-- print(string.format("TSM:classic SendQuery str=%s page=%s class=%s subClass=%s invType=%s minLevel=%s maxLevel=%s qualityIndex=%s usable=%s getAll=%s", tostring(str), tostring(page), tostring(classIndex), tostring(subclassIndex), tostring(invTypeIndex), tostring(minLevel), tostring(maxLevel), tostring(qualityIndex), tostring(usableFlag), tostring(getAllFlag)))
+		local future = private.wrappers.QueryAuctionItems:Start(str, minLevel, maxLevel, invTypeIndex, classIndex, subclassIndex, page, usableFlag, qualityIndex, getAllFlag)
+		-- print(string.format("TSM:classic SendQuery future=%s", tostring(future ~= nil)))
+		if TSMDBG then
+			TSMDBG.Log("AuctionHouseWrapper", "classic SendQuery str=%s page=%s class=%s subClass=%s invType=%s minLevel=%s maxLevel=%s minQuality=%s usable=%s getAll=%s", tostring(str), tostring(page), tostring(classIndex), tostring(subclassIndex), tostring(invTypeIndex), tostring(minLevel), tostring(maxLevel), tostring(minQuality), tostring(usable), tostring(getAllFlag))
+		end
+		return future
 	end
 end
 
@@ -579,6 +612,34 @@ function AuctionHouseWrapper.PlaceBid(auctionId, bidBuyout)
 	end
 end
 
+function private.PrepareClassicSellSlot(bag, slot, duration)
+	local auctionFrameWasShown = AuctionFrame and AuctionFrame:IsShown()
+	if AuctionFrame and not auctionFrameWasShown then
+		AuctionFrame:Show()
+	end
+	for attempt = 1, 3 do
+		if _G["AuctionFrameTab3"] and AuctionFrameTab_OnClick then
+			AuctionFrameTab_OnClick(_G["AuctionFrameTab3"])
+		end
+		if AuctionFrameAuctions then
+			AuctionFrameAuctions.duration = duration
+		end
+		ClearCursor()
+		Container.PickupItem(bag, slot)
+		if CursorHasItem() then
+			ClickAuctionSellItemButton(AuctionsItemButton, "LeftButton")
+		end
+		local sellName = GetAuctionSellItemInfo()
+		if sellName then
+			return true, sellName, auctionFrameWasShown
+		end
+		if AuctionFrameAuctions_Update then
+			AuctionFrameAuctions_Update()
+		end
+	end
+	return false, nil, auctionFrameWasShown
+end
+
 ---Posts an item on the AH.
 ---@param bag number The bag to post from
 ---@param slot number The slot to post from
@@ -617,25 +678,9 @@ function AuctionHouseWrapper.PostAuction(bag, slot, duration, stackSize, numAuct
 		-- inert and ClickAuctionSellItemButton silently fails (item stays on the cursor, slot empty),
 		-- which made StartAuction post nothing. Mirror Auctionator: ensure the Auctions sell pane is
 		-- active first, then pick up the item, verify it's on the cursor, and drop it into the slot.
-		local auctionFrameWasShown = AuctionFrame and AuctionFrame:IsShown()
-		if AuctionFrame and not auctionFrameWasShown then
-			-- AuctionFrame is kept at scale 0.001 by TSM, so showing it stays invisible to the user
-			AuctionFrame:Show()
-		end
-		if _G["AuctionFrameTab3"] and AuctionFrameTab_OnClick then
-			-- Tab 3 is the Auctions (sell) tab; activating it runs the OnShow that wires up the sell slot
-			AuctionFrameTab_OnClick(_G["AuctionFrameTab3"])
-		end
-		-- Need to set the duration in the default UI to avoid Blizzard errors
-		AuctionFrameAuctions.duration = duration
-		ClearCursor()
-		Container.PickupItem(bag, slot)
-		if CursorHasItem() then
-			ClickAuctionSellItemButton(AuctionsItemButton, "LeftButton")
-		end
-		local sellName = GetAuctionSellItemInfo()
+		local prepared, sellName, auctionFrameWasShown = private.PrepareClassicSellSlot(bag, slot, duration)
 		local result = nil
-		if sellName then
+		if prepared and sellName then
 			result = private.wrappers.PostAuction:Start(bid, buyout, duration, stackSize, numAuctions, true)
 		else
 			Log.Err("Failed to load item into AH sell slot (%d, %d)", bag, slot)
@@ -673,7 +718,7 @@ end
 ---Sets the auction house sorts and returns whether or not it's currently sorted.
 ---@param useEmptySorts boolean Use an empty sorts list
 ---@return boolean
-function AuctionHouseWrapper.SetSort(useEmptySorts)
+function AuctionHouseWrapper.SetSort(useEmptySorts, usePriceSort)
 	if not LibTSMWoW.IsVanillaClassic() and not LibTSMWoW.IsBCClassic() and not LibTSMWoW.IsWrathClassic() then
 		return true
 	end
@@ -681,7 +726,14 @@ function AuctionHouseWrapper.SetSort(useEmptySorts)
 	-- In 3.3.5, just clear the sort and proceed immediately
 	SortAuctionClearSort("list")
 
-	local sorts = useEmptySorts and EMPTY_SORTS_TABLE or BROWSE_SORTS_TABLE
+	local sorts = nil
+	if usePriceSort then
+		sorts = PRICE_BROWSE_SORTS_TABLE
+	elseif useEmptySorts then
+		sorts = EMPTY_SORTS_TABLE
+	else
+		sorts = BROWSE_SORTS_TABLE
+	end
 	if #sorts > 0 then
 		for _, col in ipairs(sorts) do
 			SortAuctionSetSort("list", col, false)
@@ -723,23 +775,11 @@ function AuctionHouseWrapper.GetDepositCost(bag, slot, stackSize, postTime, bid,
 		-- shown/initialized. TSM keeps the Blizzard AuctionFrame hidden, so without activating the
 		-- tab first ClickAuctionSellItemButton silently fails and GetAuctionSellItemInfo stays nil,
 		-- making this return the 0 fallback (deposit shown as 0). Same fix as PostAuction below.
-		local auctionFrameWasShown = AuctionFrame and AuctionFrame:IsShown()
-		if AuctionFrame and not auctionFrameWasShown then
-			AuctionFrame:Show()
-		end
-		if _G["AuctionFrameTab3"] and AuctionFrameTab_OnClick then
-			AuctionFrameTab_OnClick(_G["AuctionFrameTab3"])
-		end
-		ClearCursor()
-		Container.PickupItem(bag, slot)
-		if CursorHasItem() then
-			ClickAuctionSellItemButton(AuctionsItemButton, "LeftButton")
-		end
+		local prepared, name, auctionFrameWasShown = private.PrepareClassicSellSlot(bag, slot, postTime)
 		ClearCursor()
 		-- WotLK 3.3.5: CalculateAuctionDeposit(duration) returns deposit for item in AH slot
-		local name = GetAuctionSellItemInfo()
 		local depositCost = 0
-		if name then
+		if prepared and name then
 			depositCost = CalculateAuctionDeposit(postTime) or 0
 		end
 		if AuctionFrame and not auctionFrameWasShown then
@@ -843,6 +883,10 @@ end
 
 function APIWrapper:_HandleAPICall(...)
 	self._callTime = GetTime()
+	if self._name == "QueryAuctionItems" then
+		-- Debug output disabled for APIWrapper to reduce chat spam
+		-- print(string.format("TSM:APIWrapper _HandleAPICall name=%s args=%s", self._name, private.ArgsToStr(...)))
+	end
 	if self._state == "IDLE" then
 		self._state = "PENDING_HOOKED"
 		local loc = DebugStack.GetLocation(3)
@@ -1092,6 +1136,8 @@ function private.EventHandler(eventName, ...)
 		-- won't hit a fixed key; remap it to the synthetic won token so PlaceAuctionBid resolves.
 		if eventName == "CHAT_MSG_SYSTEM" and not private.events[eventName][genericEventArg] and private.IsAuctionWonMessage(genericEventArg) then
 			genericEventArg = AUCTION_WON_TOKEN
+		elseif eventName == "CHAT_MSG_SYSTEM" and not private.events[eventName][genericEventArg] and (strfind(genericEventArg or "", "won") or strfind(genericEventArg or "", "auction")) then
+			genericEventArg = AUCTION_WON_TOKEN
 		end
 		if (ClientInfo.IsRetail() and issecretvalue(genericEventArg)) or not private.events[eventName][genericEventArg] then
 			return
@@ -1105,6 +1151,9 @@ end
 function private.ResponseReceivedHandler(eventName, ...)
 	Log.Info("%s (%s)", eventName, private.ArgsToStr(...))
 	private.lastResponseReceived = GetTime()
+	if TSMDBG and eventName == "AUCTION_ITEM_LIST_UPDATE" then
+		TSMDBG.Log("AuctionHouseWrapper", "received AUCTION_ITEM_LIST_UPDATE numAuctions=%d totalAuctions=%d", AuctionHouse.GetNumAuctions() or 0, select(2, AuctionHouse.GetNumAuctions()) or 0)
+	end
 end
 
 function private.UnusedEventHandler(eventName, ...)

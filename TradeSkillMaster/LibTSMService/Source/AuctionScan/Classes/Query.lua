@@ -12,12 +12,15 @@ local ItemInfo = LibTSMService:Include("Item.ItemInfo")
 local AuctionHouse = LibTSMService:From("LibTSMWoW"):Include("API.AuctionHouse")
 local AuctionHouseWrapper = LibTSMService:From("LibTSMWoW"):Include("API.AuctionHouseWrapper")
 local ClientInfo = LibTSMService:From("LibTSMWoW"):Include("Util.ClientInfo")
+local Item = LibTSMService:From("LibTSMWoW"):Include("API.Item")
 local ItemString = LibTSMService:From("LibTSMTypes"):Include("Item.ItemString")
 local TempTable = LibTSMService:From("LibTSMUtil"):Include("BaseType.TempTable")
 local String = LibTSMService:From("LibTSMUtil"):Include("Lua.String")
 local ObjectPool = LibTSMService:From("LibTSMUtil"):IncludeClassType("ObjectPool")
 local private = {
 	objectPool = ObjectPool.New("AUCTION_SCAN_QUERY", AuctionQuery, 1),
+	-- 3.3.5 backport: cache of link -> usable result for the client-side usable filter
+	usableCache = {},
 }
 local ITEM_SPECIFIC = newproxy()
 local ITEM_BASE = newproxy()
@@ -75,6 +78,7 @@ function AuctionQuery:__init()
 	self._staleSubRowsCleared = false
 	self._accumulate = false
 	self._useGetAll = false
+	self._usePriceSort = false
 	self._traceTag = nil
 	self._tStart = nil
 	self._tFirstPage = nil
@@ -82,6 +86,7 @@ function AuctionQuery:__init()
 	self._maxTotalSeen = 0
 	self._tPageQuerySent = nil
 	self._lastPagePrinted = -1
+	self._lastPageFingerprint = nil
 end
 
 function AuctionQuery:_Release()
@@ -121,6 +126,7 @@ function AuctionQuery:_Release()
 	self._staleSubRowsCleared = false
 	self._accumulate = false
 	self._useGetAll = false
+	self._usePriceSort = false
 	self._traceTag = nil
 	self._tStart = nil
 	self._tFirstPage = nil
@@ -128,8 +134,8 @@ function AuctionQuery:_Release()
 	self._maxTotalSeen = 0
 	self._tPageQuerySent = nil
 	self._lastPagePrinted = -1
+	self._lastPageFingerprint = nil
 end
-
 
 
 -- ============================================================================
@@ -151,6 +157,7 @@ function AuctionQuery:SetStr(str, exact)
 	self._strLower = strlower(self._str)
 	self._strMatch = String.Escape(self._strLower)
 	self._exact = exact or false
+	-- print(string.format("TSM:Query:SetStr str=%s lower=%s exact=%s", tostring(str), tostring(self._strLower), tostring(exact)))
 	return self
 end
 
@@ -201,6 +208,11 @@ end
 ---@return AuctionQuery
 function AuctionQuery:SetUsable(usable)
 	self._usable = usable or false
+	-- 3.3.5 backport: wipe the client-side usable cache when a new usable query starts,
+	-- since usability can change between scans (level up, learned skill/recipe)
+	if self._usable then
+		wipe(private.usableCache)
+	end
 	return self
 end
 
@@ -319,7 +331,13 @@ function AuctionQuery:SetUseGetAll(useGetAll)
 	self._useGetAll = useGetAll and true or false
 	return self
 end
-
+---Requests the classic browse results to be sorted by unit price.
+---@param usePriceSort boolean
+---@return AuctionQuery
+function AuctionQuery:SetUsePriceSort(usePriceSort)
+	self._usePriceSort = usePriceSort and true or false
+	return self
+end
 ---Sets whether browse results accumulate across repeated browses instead of being
 ---wiped before each one. Used by the classic Sniper so found lots persist in the
 ---list between rescans (deduped by auction hash). Results are still cleared when the
@@ -548,7 +566,7 @@ end
 -- ============================================================================
 
 function AuctionQuery:_SetSort()
-	return AuctionHouseWrapper.SetSort(type(self._specifiedPage) == "string")
+	return AuctionHouseWrapper.SetSort(self._usePriceSort or type(self._specifiedPage) == "string", self._usePriceSort)
 end
 
 function AuctionQuery:_SendWowQuery()
@@ -578,6 +596,37 @@ function AuctionQuery:_SendWowQuery()
 	return AuctionHouseWrapper.SendQuery(self._str, class, subClass, invType, minLevel, maxLevel, minQuality, self._maxQuality, self._uncollected, self._usable, self._upgrades, self._exact, self._page, self._useGetAll)
 end
 
+function AuctionQuery:_HasSubRowFilters(ignoreTextSearch)
+	if not ignoreTextSearch and self._str ~= "" then
+		return true
+	end
+	if next(self._items) then
+		return true
+	end
+	if self._minLevel ~= -math.huge or self._maxLevel ~= math.huge then
+		return true
+	end
+	if self._minItemLevel ~= -math.huge or self._maxItemLevel ~= math.huge then
+		return true
+	end
+	if self._minQuality ~= -math.huge or self._maxQuality ~= math.huge then
+		return true
+	end
+	if self._class ~= FILTER_NOT_SET or self._subClass ~= FILTER_NOT_SET or self._invType ~= FILTER_NOT_SET then
+		return true
+	end
+	if self._unlearned or self._canLearn then
+		return true
+	end
+	if self._minPrice ~= 0 or self._maxPrice ~= math.huge then
+		return true
+	end
+	for _ in pairs(self._customFilters) do
+		return true
+	end
+	return false
+end
+
 function AuctionQuery:_IsFiltered(row, isSubRow, itemKey)
 	local baseItemString = row:GetBaseItemString()
 	local itemString = row:GetItemString()
@@ -586,6 +635,12 @@ function AuctionQuery:_IsFiltered(row, isSubRow, itemKey)
 	local _, itemBuyout, minItemBuyout = row:GetBuyouts(itemKey)
 	if row:IsSubRow() and itemBuyout == 0 then
 		_, itemBuyout = row:GetBidInfo()
+	end
+
+	-- 3.3.5: на классике GetItemInfo возвращает nil, поэтому используем itemLink для получения названия
+	if not name and row._itemLink then
+		local link = row._itemLink or ""
+		name = link:match("%[(.-)%]") or ""
 	end
 
 	if next(self._items) then
@@ -603,8 +658,14 @@ function AuctionQuery:_IsFiltered(row, isSubRow, itemKey)
 	end
 	if self._str ~= "" and name then
 		name = strlower(name)
-		if not strmatch(name, self._strMatch) or (self._exact and name ~= self._strLower) then
-			return true
+		if self._exact then
+			if name ~= self._strLower then
+				return true
+			end
+		else
+			if not strfind(name, self._strLower, 1, true) then
+				return true
+			end
 		end
 	end
 	if self._minLevel ~= -math.huge or self._maxLevel ~= math.huge then
@@ -640,6 +701,22 @@ function AuctionQuery:_IsFiltered(row, isSubRow, itemKey)
 	end
 	if minItemBuyout and minItemBuyout > self._maxPrice then
 		return true
+	end
+	-- 3.3.5 backport fix: the server-side "usable" flag of QueryAuctionItems can't be
+	-- relied on (many private servers ignore it), so post-filter client-side via a
+	-- tooltip scan for red (unmet requirement) text. Results are cached per item.
+	if self._usable and not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		local link = ItemInfo.GetLink(itemString or baseItemString)
+		if link then
+			local cached = private.usableCache[link]
+			if cached == nil then
+				cached = Item.IsUsable(link)
+				private.usableCache[link] = cached
+			end
+			if not cached then
+				return true
+			end
+		end
 	end
 	for func in pairs(self._customFilters) do
 		if func(self, row, isSubRow, itemKey) then
@@ -684,6 +761,14 @@ function AuctionQuery:_BrowseIsDone(isRetry)
 				return true
 			end
 			local pageIsLast = numAuctions < NUM_AUCTION_ITEMS_PER_PAGE
+			local pageFingerprint = nil
+			if numAuctions > 0 then
+				local _, firstLink = AuctionHouse.GetBrowseResult(1)
+				local _, lastLink = AuctionHouse.GetBrowseResult(numAuctions)
+				pageFingerprint = tostring(firstLink or "") .. "|" .. tostring(lastLink or "") .. "|" .. tostring(numAuctions)
+			else
+				pageFingerprint = "0"
+			end
 			-- Memoize peak totalNumAuctions: on 3.3.5 it can transiently be 0 or
 			-- swing low between pages, but it does monotonically converge to the
 			-- real AH total. Peak value is a safe upper bound.
@@ -701,9 +786,10 @@ function AuctionQuery:_BrowseIsDone(isRetry)
 					cappedDone = true
 				end
 			end
-			local done = pageIsLast or cappedDone
-			if TSMDBG then TSMDBG.Log("Query", "_BrowseIsDone classic page=%d num=%d total=%d maxTotal=%d pageIsLast=%s cappedDone=%s done=%s",
-				self._page, numAuctions, totalNumAuctions, self._maxTotalSeen, tostring(pageIsLast), tostring(cappedDone), tostring(done)) end
+			local repeatedPage = self._page > 0 and self._lastPageFingerprint and self._lastPageFingerprint == pageFingerprint and numAuctions >= NUM_AUCTION_ITEMS_PER_PAGE and totalNumAuctions <= 0
+			local done = pageIsLast or cappedDone or repeatedPage
+			if TSMDBG then TSMDBG.Log("Query", "_BrowseIsDone classic page=%d num=%d total=%d maxTotal=%d pageIsLast=%s cappedDone=%s repeatedPage=%s done=%s",
+				self._page, numAuctions, totalNumAuctions, self._maxTotalSeen, tostring(pageIsLast), tostring(cappedDone), tostring(repeatedPage), tostring(done)) end
 			-- Per-page chat line, FullScan slow-scan style. Print once per page
 			-- (guarded by _lastPagePrinted because _BrowseIsDone can be called
 			-- multiple times per AUCTION_ITEM_LIST_UPDATE during validation).
@@ -720,12 +806,13 @@ function AuctionQuery:_BrowseIsDone(isRetry)
 					maxPages > 0 and tostring(maxPages) or "?",
 					serverTime, numAuctions, self._maxTotalSeen))
 			end
+			self._lastPageFingerprint = pageFingerprint
 			if done and self._traceTag and self._tStart then
 				local elapsed = GetTime() - self._tStart
 				local pageAvg = self._pageCount and self._pageCount > 0 and elapsed / self._pageCount or 0
-				print(string.format("|cFFFFA500TSM DE Scan:|r query=%s DONE pages=%d lastPageItems=%d total=%d (cap=%s) elapsed=%.2fs avg/page=%.2fs",
+				print(string.format("|cFFFFA500TSM DE Scan:|r query=%s DONE pages=%d lastPageItems=%d total=%d (cap=%s repeat=%s) elapsed=%.2fs avg/page=%.2fs",
 					tostring(self._traceTag), self._pageCount or 0, numAuctions, self._maxTotalSeen,
-					cappedDone and "yes" or "no", elapsed, pageAvg))
+					cappedDone and "yes" or "no", repeatedPage and "yes" or "no", elapsed, pageAvg))
 			end
 			return done
 		end
@@ -828,26 +915,15 @@ function AuctionQuery:_FilterBrowseResults()
 		local filterSubRows = false
 
 		if isClassic then
-			-- 3.3.5: фильтруем по строке поиска + ценам через subRowIterator (cheap text match).
-			local hasSubRows = false
-			for _, subRow in row:SubRowIterator() do
-				hasSubRows = true
-				if self._str ~= "" then
-					local link = subRow._itemLink or ""
-					local name = link:match("%[(.-)%]") or ""
-					name = strlower(name)
-					if not strmatch(name, self._strMatch or self._str) then
-						-- не совпало
-					end
-				end
-			end
-			if not hasSubRows then
+			-- 3.3.5: filter by query text in ProcessBrowseResultClassic, not in row-level subrow filtering.
+			if row:GetNumSubRows() == 0 then
 				isFiltered = true
+			elseif self:_HasSubRowFilters(true) then
+				-- Apply per-subRow filters (price, customFilters from VendorSearch/etc).
+				-- Without this, custom filters set via AddCustomFilter are silently skipped on classic.
+				local ok2, errOrRes2 = pcall(function() return row:FilterSubRows(self) end)
+				if ok2 then filterSubRows = errOrRes2 else TSMDBG.LogErr("Query:FilterSubRows", errOrRes2) end
 			end
-			-- Apply per-subRow filters (price, customFilters from VendorSearch/etc).
-			-- Without this, custom filters set via AddCustomFilter are silently skipped on classic.
-			local ok2, errOrRes2 = pcall(function() return row:FilterSubRows(self) end)
-			if ok2 then filterSubRows = errOrRes2 else TSMDBG.LogErr("Query:FilterSubRows", errOrRes2) end
 		else
 			local ok, errOrRes = pcall(function() return row:IsFiltered(self) end)
 			if ok then isFiltered = errOrRes else TSMDBG.LogErr("Query:IsFiltered", errOrRes) end
