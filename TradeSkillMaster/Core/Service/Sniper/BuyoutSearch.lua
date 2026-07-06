@@ -8,10 +8,13 @@ local TSM = select(2, ...) ---@type TSM
 local BuyoutSearch = TSM.Sniper:NewPackage("BuyoutSearch")
 local SoundAlert = TSM.LibTSMWoW:Include("UI.SoundAlert")
 local ClientInfo = TSM.LibTSMWoW:Include("Util.ClientInfo")
+local AuctionHouse = TSM.LibTSMWoW:Include("API.AuctionHouse")
 local Group = TSM.LibTSMTypes:Include("Group")
 local Threading = TSM.LibTSMTypes:Include("Threading")
 local ItemInfo = TSM.LibTSMService:Include("Item.ItemInfo")
+local TempTable = TSM.LibTSMService:From("LibTSMUtil"):Include("BaseType.TempTable")
 local SniperOperation = TSM.LibTSMSystem:Include("SniperOperation")
+local USE_GET_ALL = true
 local private = {
 	settings = nil,
 	scanThreadId = nil,
@@ -44,16 +47,38 @@ end
 
 ---@param auctionScan AuctionScanManager
 function private.ScanThread(auctionScan)
+	-- print("TSM:SniperDebug ScanThread started")
 	local numQueries = auctionScan:GetNumQueries()
-	if numQueries == 0 then
-		local query = auctionScan:NewQuery()
-			:AddCustomFilter(private.QueryFilter)
-		if ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic() then
-			query:SetPage("LAST")
-			-- 3.3.5: keep found lots in the list across rescans; the list is cleared
-			-- only when the scan is stopped/restarted (the query is released then)
-			query:SetAccumulate(true)
-		end
+		if numQueries == 0 then
+			-- Prefer per-item exact-name queries when we have a list of items to
+			-- search for (faster than scanning the whole AH). Fall back to the
+			-- legacy page-scan query when no item list exists.
+			local itemList = TempTable.Acquire()
+			local added = false
+			if TSM and TSM.Sniper and TSM.Sniper.PopulateItemList then
+				local ok, err = pcall(function() return TSM.Sniper.PopulateItemList(itemList) end)
+				-- PopulateItemList returns true/false; we just need items added to itemList
+				if ok and #itemList > 0 then
+					auctionScan:AddItemListQueriesThreaded(itemList)
+					added = true
+				end
+			end
+			TempTable.Release(itemList)
+
+			if not added then
+				local query = auctionScan:NewQuery()
+					:AddCustomFilter(private.QueryFilter)
+				if ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic() then
+					if USE_GET_ALL and AuctionHouse.CanSendGetAllQuery() then
+						query:SetUseGetAll(true)
+					else
+						query:SetPage("LAST")
+					end
+					-- 3.3.5: keep found lots in the list across rescans; the list is cleared
+					-- only when the scan is stopped/restarted (the query is released then)
+					query:SetAccumulate(true)
+				end
+			end
 	end
 	auctionScan:SetScript("OnQueryDone", private.OnQueryDone)
 	-- Just constantly rerun the scan until the thread is killed (don't care if it fails)
@@ -87,6 +112,16 @@ function private.QueryFilter(_, subRow, isSubRow, itemKey)
 	if not maxPrice and baseItemString and baseItemString ~= itemString then
 		maxPrice = SniperOperation.GetMaxPrice(baseItemString)
 	end
+
+	local herbName = itemString and ItemInfo.GetName(itemString) or baseItemString and ItemInfo.GetName(baseItemString)
+	if herbName and strlower(herbName) == "личецвет" then
+		-- local _, herbItemBuyout, herbMinItemBuyout = subRow:GetBuyouts()
+		-- print(string.format(
+		-- 	"TSM:SniperDebug item=%s itemString=%s base=%s buyout=%s maxPrice=%s",
+		-- 	tostring(herbName), tostring(itemString), tostring(baseItemString), tostring(herbItemBuyout or herbMinItemBuyout), tostring(maxPrice)
+		-- ))
+	end
+
 	if not maxPrice then
 		-- No Sniper operation applies to this item, so filter it out
 		return true
