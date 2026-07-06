@@ -63,6 +63,10 @@ function Operations.RegisterModule(name, callback)
 end
 
 function Operations.ShowOperationSettings(baseFrame, moduleName, operationName)
+	if not baseFrame then
+		return
+	end
+	baseFrame = baseFrame:GetBaseElement()
 	baseFrame:SetSelectedNavButton(L["Operations"], true)
 	baseFrame:GetElement("content.operations.selection.operationTree"):SetSelectedOperation(moduleName, operationName)
 end
@@ -534,10 +538,17 @@ function private.ActionHandler(manager, state, action, ...)
 	elseif action == "ACTION_HANDLE_FRAME_HIDDEN" then
 		state.frame = nil
 	elseif action == "ACTION_RELOAD_CURRENT_SETTINGS" then
+		if not state.frame then
+			return
+		end
 		Operations.ShowOperationSettings(state.frame:GetBaseElement(), private.currentModule, private.currentOperationName)
 	elseif action == "ACTION_VIEW_GROUP" then
-		local groupPath = ...
-		TSM.MainUI.Groups.ShowGroupSettings(state.frame:GetBaseElement(), groupPath)
+		local groupPath, baseFrame = ...
+		baseFrame = baseFrame and baseFrame:GetBaseElement() or (state.frame and state.frame:GetBaseElement())
+		if not baseFrame then
+			return
+		end
+		TSM.MainUI.Groups.ShowGroupSettings(baseFrame, groupPath)
 	elseif action == "ACTION_REMOVE_GROUP_LINE" then
 		local line = ...
 		local parent = line:GetParentElement()
@@ -585,6 +596,14 @@ function private.OperationTreeOnOperationSelected(self, moduleName, operationNam
 	private.currentOperationName = operationName
 
 	local viewContainer = self:GetParentElement():GetParentElement():GetElement("content")
+	-- 3.3.5 backport fix: operations may exist in saved variables for modules whose
+	-- addon isn't loaded (e.g. TSM_Vendoring / TSM_Mailing disabled or not installed).
+	-- Their settings page is registered by that addon, so without this guard clicking
+	-- such an operation caused "attempt to call field (a nil value)".
+	if moduleName and operationName and not private.moduleCallbacks[moduleName] then
+		ChatMessage.PrintfUser("Cannot show '%s' operation settings - the TSM_%s addon is not loaded.", operationName, moduleName)
+		operationName = nil
+	end
 	if moduleName and operationName then
 		Operation.UpdateFromRelationships(moduleName, operationName)
 		viewContainer:SetPath("operation")
@@ -653,6 +672,13 @@ function private.ResetOperationOnClick(button)
 end
 
 function private.ConfirmResetOnClick(button)
+	-- 3.3.5 backport fix: guard against the module's addon not being loaded (see
+	-- OperationTreeOnOperationSelected)
+	if not private.moduleCallbacks[private.currentModule] then
+		ChatMessage.PrintfUser("Cannot reset '%s' operation - the TSM_%s addon is not loaded.", private.currentOperationName, private.currentModule)
+		button:GetBaseElement():HideDialog()
+		return
+	end
 	Operation.Reset(private.currentModule, private.currentOperationName)
 	local settingsFrame = button:GetBaseElement():GetElement("content.operations.content.settings")
 	local contentFrame = settingsFrame:GetElement("content")
