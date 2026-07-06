@@ -351,7 +351,16 @@ function AuctionHouse.GetNumPages()
 		-- Sometimes the AH refuses to give more results, so don't keep scanning
 		totalNumAuctions = 0
 	end
-	local n = ceil(totalNumAuctions / NUM_AUCTION_ITEMS_PER_PAGE)
+	local n = 0
+	if totalNumAuctions and totalNumAuctions > 0 then
+		n = ceil(totalNumAuctions / NUM_AUCTION_ITEMS_PER_PAGE)
+	else
+		-- Private-server 3.3.5 cores often report 0/garbled totals. If the current
+		-- page already contains results, keep the scan bounded to at least one page
+		-- instead of returning 0 and starving later pagination logic.
+		n = numAuctions > 0 and 1 or 0
+	end
+	n = max(1, n)
 	if TSMDBG then TSMDBG.Log("AHWrap", "GetNumPages num=%d total=%d pages=%d", numAuctions or 0, totalNumAuctions or 0, n) end
 	return n
 end
@@ -448,6 +457,8 @@ end
 ---Records the time of the last auction query (classic only).
 function private.QueryAuctionItemsHook()
 	private.lastQueryTime = GetTime()
+	-- Debug output disabled to reduce chat spam
+	-- print(string.format("TSM:QueryAuctionItemsHook called at %.3f", GetTime()))
 end
 
 ---Seconds elapsed since the last auction query was sent (classic only).
@@ -542,9 +553,14 @@ end
 ---@param quantity? number The auction quantity
 ---@return boolean
 function AuctionHouse.IsPurchaseMessage(msg, name, quantity)
+	if not msg or not name then
+		return false
+	end
 	if msg == AuctionHouse.GetPurchaseMessage(name) then
 		return true
 	elseif quantity and not LibTSMWoW.IsVanillaClassic() and not LibTSMWoW.IsBCClassic() and not LibTSMWoW.IsWrathClassic() and msg == format(ERR_AUCTION_COMMODITY_WON_S, name, quantity) then
+		return true
+	elseif type(msg) == "string" and (strfind(msg, name, 1, true) or strfind(msg, "auction", 1, true) or strfind(msg, "won", 1, true)) then
 		return true
 	end
 	return false
