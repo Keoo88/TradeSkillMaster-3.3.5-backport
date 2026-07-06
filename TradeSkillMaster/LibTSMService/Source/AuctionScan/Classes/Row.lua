@@ -380,24 +380,32 @@ end
 ---@return boolean
 function AuctionRow:FilterSubRows(query)
 	local subRowOffset = ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) and (self._searchIndex * SUB_ROW_SEARCH_INDEX_MULTIPLIER) or 0
+	local doFilter = query:_HasSubRowFilters()
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		local itemKey = self._items[self._searchIndex]
-		for j = itemKey._numAuctions, 1, -1 do
-			local subRow = self._subRows[subRowOffset + j]
-			if query:_IsFiltered(subRow, true) then
-				self:_RemoveSubRowByIndex(j)
+		if doFilter then
+			for j = itemKey._numAuctions, 1, -1 do
+				local subRow = self._subRows[subRowOffset + j]
+				if query:_IsFiltered(subRow, true) then
+					self:_RemoveSubRowByIndex(j)
+				end
 			end
 		end
 	else
-		for i = #self._subRows, 1, -1 do
-			if query:_IsFiltered(self._subRows[i], true) then
-				self:_RemoveSubRowByIndex(i)
+		if doFilter then
+			for i = #self._subRows, 1, -1 do
+				if query:_IsFiltered(self._subRows[i], true) then
+					self:_RemoveSubRowByIndex(i)
+				end
 			end
 		end
 	end
 
 	-- Merge subRows with identical hashes
-	local numSubRows = nil
+	local numSubRows = ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) and self._items[self._searchIndex]._numAuctions or #self._subRows
+	if numSubRows <= 1 then
+		return numSubRows == 0
+	end
 	local hashIndexLookup = TempTable.Acquire()
 	local index = 1
 	while true do
