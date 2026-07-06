@@ -164,6 +164,56 @@ function private.PopulateOperationLine(tooltip, itemString, moduleName)
 	TempTable.Release(operations)
 end
 
+---3.3.5 backport fix: the Destroy tooltip lines used to require the TSM_Crafting addon
+---(`if not TSM.Crafting then return`), while the "Destroy" custom price source works
+---without it. This helper uses TSM.Crafting when available and otherwise computes the
+---conversion value directly from the conversion data (same logic as the Destroy source).
+---@param itemString string
+---@return number|nil value
+---@return number|nil method
+function private.GetConversionsValue(itemString)
+	if TSM.Crafting then
+		return TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
+	end
+	local sourceKey = private.settings.destroyValueSource
+	if not sourceKey then
+		return nil, nil
+	end
+	-- Disenchant value
+	if ItemInfo.IsDisenchantable(itemString) then
+		local classId = ItemInfo.GetClassId(itemString)
+		local quality = ItemInfo.GetQuality(itemString)
+		local itemLevel = ItemInfo.GetItemLevel(ItemString.GetBase(itemString))
+		if classId and quality and itemLevel then
+			local value = 0
+			for targetItemString in Conversion.DisenchantTargetItemIterator() do
+				local amountOfMats = Conversions.GetDisenchantTargetItemSourceInfo(targetItemString, classId, quality, itemLevel, nil)
+				if amountOfMats then
+					local matValue = CustomString.GetSourceValue(sourceKey, targetItemString) or 0
+					value = value + matValue * amountOfMats
+				end
+			end
+			value = floor(value)
+			if value > 0 then
+				return value, Conversion.METHOD.DISENCHANT
+			end
+		end
+	end
+	-- Mill / prospect / transform / vendor trade value
+	local value = 0
+	local method = nil
+	for targetItemString, rate, _, _, _, _, _, _, itemMethod in Conversion.TargetItemsByMethodIterator(itemString, nil) do
+		method = method or itemMethod
+		local matValue = CustomString.GetSourceValue(sourceKey, targetItemString) or 0
+		value = value + matValue * rate
+	end
+	value = floor(value)
+	if value > 0 and method then
+		return value, method
+	end
+	return nil, nil
+end
+
 function private.PopulateFullDestroyLines(tooltip, itemString)
 	private.PopulateSimpleDestroyLines(tooltip, itemString)
 	if itemString == ItemString.GetPlaceholder() then
@@ -173,8 +223,7 @@ function private.PopulateFullDestroyLines(tooltip, itemString)
 		tooltip:EndSection()
 		return
 	end
-	if not TSM.Crafting then return nil, nil end
-	local value, method = TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
+	local value, method = private.GetConversionsValue(itemString)
 	if not value then
 		return nil, nil
 	end
@@ -202,13 +251,15 @@ function private.PopulateFullDestroyLines(tooltip, itemString)
 		end
 	else
 		for targetItemString, amountOfMats, matRate, minAmount, maxAmount, targetQuality, sourceQuality in Conversion.TargetItemsByMethodIterator(itemString, method) do
+			-- 3.3.5 backport fix: guard TSM.Crafting (module may not be loaded)
 			local matValue = CustomString.GetSourceValue(private.settings.destroyValueSource, targetItemString)
-				or TSM.Crafting.GetConversionsValue(targetItemString, private.settings.destroyValueSource)
+				or (TSM.Crafting and TSM.Crafting.GetConversionsValue(targetItemString, private.settings.destroyValueSource))
+				or (not TSM.Crafting and private.GetConversionsValue(targetItemString))
 				or CustomString.GetSourceValue("DBMarket", targetItemString)
 				or CustomString.GetSourceValue("DBMinBuyout", targetItemString)
 				or 0
 			if matValue > 0 then
-				local quality = sourceQuality and TSM.Crafting.Quality.GetExpectedSalvageResult(method, sourceQuality)
+				local quality = sourceQuality and TSM.Crafting and TSM.Crafting.Quality.GetExpectedSalvageResult(method, sourceQuality)
 				if not targetQuality or targetQuality == quality then
 					tooltip:AddSubItemValueLine(targetItemString, matValue, amountOfMats, matRate, minAmount, maxAmount)
 				end
@@ -224,8 +275,8 @@ function private.PopulateSimpleDestroyLines(tooltip, itemString)
 		-- Example tooltip
 		value = 20
 		method = Conversion.METHOD.PROSPECT
-	elseif TSM.Crafting then
-		value, method = TSM.Crafting.GetConversionsValue(itemString, private.settings.destroyValueSource)
+	else
+		value, method = private.GetConversionsValue(itemString)
 	end
 	if not value then
 		return nil, nil

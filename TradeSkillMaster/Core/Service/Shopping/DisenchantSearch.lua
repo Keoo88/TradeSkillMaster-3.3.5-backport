@@ -17,6 +17,7 @@ local AuctionHouse = TSM.LibTSMWoW:Include("API.AuctionHouse")
 local Event = TSM.LibTSMWoW:Include("Service.Event")
 local DefaultUI = TSM.LibTSMWoW:Include("UI.DefaultUI")
 local AuctionSearchContext = TSM.LibTSMService:IncludeClassType("AuctionSearchContext")
+local USE_GET_ALL = true
 
 -- DE-able minimum quality for slowscan fallback (Uncommon=2). On 3.3.5
 -- QueryAuctionItems honors only minQuality (not max). Class translation
@@ -26,6 +27,8 @@ local AuctionSearchContext = TSM.LibTSMService:IncludeClassType("AuctionSearchCo
 -- almost entirely in these two AH classes; the few stragglers (recipes etc.)
 -- aren't worth a third query.
 local SLOWSCAN_MIN_QUALITY = 2
+local FORCE_GET_ALL = false
+local MAX_PER_ITEM_DE_SCAN = 150
 
 -- 3.3.5a hard cap: no item exists above ilvl 284 (ICC 25H gear), so clamp the
 -- user's configured max DE search level. Guards against garbage/typo input in
@@ -433,6 +436,12 @@ function private.ScanThread(auctionScan)
 		Threading.Yield()
 	end
 
+	-- Keep a user-facing warning if the pre-filter rejected everything (most commonly
+	-- because there's no recent AuctionDB data for the disenchant materials).
+	if included == 0 then
+		ChatMessage.PrintUser("DE Scan: no scannable items - make sure you've done a recent Full Scan so material prices (dust/essence/shard) are known.")
+	end
+
 	-- run the scan: classic 3.3.5 uses one getAll query (single AH dump),
 	-- early-rejection in Scanner skips non-DE items by baseItemString.
 	-- If getAll is on server CD (15 min), fall back to single broad slowscan query
@@ -450,24 +459,40 @@ function private.ScanThread(auctionScan)
 		-- Native engine prints its own results to chat; AuctionScanManager queue
 		-- stays empty, so UI table will be empty. Use chat output for prices.
 	else
-		local canGetAll = AuctionHouse.CanSendGetAllQuery()
+		local canGetAll = USE_GET_ALL and AuctionHouse.CanSendGetAllQuery()
+		local forcedGetAll = false
+		if not canGetAll and FORCE_GET_ALL then
+			AuctionHouse.SetForceGetAll(true)
+			forcedGetAll = true
+			canGetAll = true
+		end
+		-- print(string.format("|cFFFFA500TSM:|r DE Sniper getAll check -> canGetAll=%s forced=%s", tostring(canGetAll), tostring(forcedGetAll)))
 		if canGetAll then
 			auctionScan:NewQuery()
 				:SetStr("", false)
 				:SetUseGetAll(true)
+				:SetUsePriceSort(true)
 				:SetItems(private.itemList)
+			if forcedGetAll then
+				AuctionHouse.SetForceGetAll(false)
+			end
 		else
+			-- print("|cFFFFA500TSM:|r DE Sniper falling back to legacy page scan")
 			-- Weapon: Enum.ItemClass.Weapon=2 -> AH classIndex=1 (translated in Wrapper)
 			auctionScan:NewQuery()
 				:SetStr("", false)
 				:SetClass(Enum.ItemClass.Weapon)
 				:SetQualityRange(SLOWSCAN_MIN_QUALITY, nil)
+				:SetUsePriceSort(true)
+				:SetIsBrowseDoneFunction(private.QueryIsBrowseDoneFunction)
 				:SetItems(private.itemList)
 			-- Armor: Enum.ItemClass.Armor=4 -> AH classIndex=2 (translated in Wrapper)
 			auctionScan:NewQuery()
 				:SetStr("", false)
 				:SetClass(Enum.ItemClass.Armor)
 				:SetQualityRange(SLOWSCAN_MIN_QUALITY, nil)
+				:SetUsePriceSort(true)
+				:SetIsBrowseDoneFunction(private.QueryIsBrowseDoneFunction)
 				:SetItems(private.itemList)
 		end
 	end
@@ -544,6 +569,29 @@ end
 function private.IsItemBuyoutTooHigh(itemString, itemBuyout)
 	local disenchantValue = CustomString.GetSourceValue("Destroy", itemString)
 	return not disenchantValue or itemBuyout > private.settings.maxDeSearchPercent / 100 * disenchantValue
+end
+
+function private.QueryIsBrowseDoneFunction(query)
+	for itemString in query:ItemIterator() do
+		local disenchantValue = CustomString.GetSourceValue("Destroy", itemString)
+		if disenchantValue then
+			local maxBuyout = private.settings.maxDeSearchPercent / 100 * disenchantValue
+			local cheapestItemBuyout = nil
+			for _, subRow in query:ItemSubRowIterator(itemString) do
+				local _, itemBuyout = subRow:GetBuyouts()
+				if itemBuyout and (not cheapestItemBuyout or itemBuyout < cheapestItemBuyout) then
+					cheapestItemBuyout = itemBuyout
+				end
+			end
+			if not cheapestItemBuyout then
+				return false
+			end
+			if cheapestItemBuyout <= maxBuyout then
+				return false
+			end
+		end
+	end
+	return true
 end
 
 function private.MarketValueFunction(row)
