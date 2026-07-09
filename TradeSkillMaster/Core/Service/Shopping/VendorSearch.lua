@@ -63,10 +63,16 @@ function private.ScanThread(auctionScan)
 	for itemString, minBuyout in TSM.AuctionDB.LastScanIteratorThreaded() do
 		if type(minBuyout) == "number" and minBuyout > 0 then
 			local vendorSell = ItemInfo.GetVendorSell(itemString)
-			if type(vendorSell) == "number" and vendorSell > 0
-				and minBuyout < vendorSell
-				and (vendorSell - minBuyout) >= MIN_STACK_PROFIT_COPPER then
-				tinsert(private.itemList, itemString)
+			if type(vendorSell) == "number" and vendorSell > 0 and minBuyout < vendorSell then
+				-- 3.3.5 fix: QueryFilter thresholds on STACK profit, but this
+				-- pre-filter compared PER-UNIT profit against the same threshold,
+				-- silently dropping stackable items whose per-unit profit is small
+				-- but whole-stack profit is real (e.g. 20 x 10c = 2s per stack).
+				-- Estimate the max possible stack profit via the item's max stack.
+				local maxStack = ItemInfo.GetMaxStack(itemString) or 1
+				if (vendorSell - minBuyout) * maxStack >= MIN_STACK_PROFIT_COPPER then
+					tinsert(private.itemList, itemString)
+				end
 			end
 		end
 		Threading.Yield()
@@ -97,8 +103,13 @@ function private.QueryFilter(_, row)
 		return true
 	end
 	-- Absolute profit on the whole stack must beat the noise threshold.
-	local quantity = stackBuyout > 0 and (stackBuyout / itemBuyout) or 1
-	local stackProfit = (vendorSell - itemBuyout) * quantity
+	-- 3.3.5 fix: use the row's real quantity instead of stackBuyout/itemBuyout —
+	-- itemBuyout is floor()'d on 3.3.5, so the division over-estimates quantity
+	-- (e.g. 24999c/5 -> floor 4999 -> 24999/4999 = 5.0008) and, worse, the
+	-- per-unit profit (vendorSell - itemBuyout) gets multiplied by that inflated
+	-- quantity, letting rounding-noise lots leak through the filter.
+	local quantity = row.GetQuantities and row:GetQuantities() or (stackBuyout > 0 and floor(stackBuyout / itemBuyout) or 1)
+	local stackProfit = vendorSell * quantity - stackBuyout
 	if stackProfit < MIN_STACK_PROFIT_COPPER then
 		return true
 	end
