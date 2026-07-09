@@ -195,20 +195,20 @@ function AuctionBuyScan:CreateBottomUIFrameForBrowse()
 		:AddChild(UIElements.New("ActionButton", "bidBtn")
 			:SetSize(107, 24)
 			:SetMargin(0, 8, 0, 0)
-			:SetText(BID)
+			:SetText(L["Bid"])
 			:SetDisabledPublisher(self._state:PublisherForExpression([[not auctionScan or pausePending == true or isSearchingForSelection or not selectionCanBid or pendingFuture ~= nil or (isConfirming and numCanBuy == 0) or not canSendAuctionQuery]]))
 			:SetAction("OnClick", "ACTION_BID_AUCTION")
 		)
 		:AddChild(UIElements.NewNamed("ActionButton", "buyoutBtn", "TSMShoppingBuyoutBtn")
 			:SetSize(107, 24)
-			:SetText(BUYOUT)
+			:SetText(L["Buyout"])
 			:DisableClickCooldown(true)
 			:SetDisabledPublisher(self._state:PublisherForExpression([[not auctionScan or pausePending == true or isSearchingForSelection or not selectionCanBuy or pendingFuture ~= nil or (isConfirming and numCanBuy == 0) or not canSendAuctionQuery]]))
 			:SetAction("OnClick", "ACTION_BUY_AUCTION")
 		)
 		:AddChild(UIElements.New("ActionButton", "cancelBtn")
 			:SetSize(107, 24)
-			:SetText(CANCEL)
+			:SetText(L["Cancel"])
 			:DisableClickCooldown(true)
 			:SetDisabledPublisher(self._state:PublisherForKeyChange("cancelShown"):InvertBoolean())
 			:SetAction("OnClick", "ACTION_CANCEL_AUCTION")
@@ -248,7 +248,7 @@ function AuctionBuyScan:CreateBottomUIFrameForSniper(showBuyoutButton)
 		)
 		:AddChild(UIElements.NewNamed("ActionButton", showBuyoutButton and "buyoutBtn" or "bidBtn", "TSMSniperBtn")
 			:SetSize(165, 24)
-			:SetText(showBuyoutButton and BUYOUT or BID)
+			:SetText(showBuyoutButton and L["Buyout"] or L["Bid"])
 			:SetDisabledPublisher(self._state:PublisherForExpression([[not auctionScan or pausePending == true or isSearchingForSelection or not selectionCanBuy or pendingFuture ~= nil or (isConfirming and numCanBuy == 0) or not canSendAuctionQuery]]))
 			:SetAction("OnClick", showBuyoutButton and "ACTION_BUY_AUCTION" or "ACTION_BID_AUCTION")
 		)
@@ -629,6 +629,10 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		end
 	elseif action == "ACTION_SET_SELECTED_AUCTION" then
 		local selection = ... ---@type AuctionRow|AuctionSubRow|nil
+		-- 3.3.5 multi-buy fix: new selection, so re-arm the one-shot stale-index refind
+		-- and the consecutive buy-failure counter
+		self._vanishRefindDone = nil
+		self._buyoutRetries = nil
 		if selection and selection:IsSubRow() then
 			local ownerStr = selection:GetOwnerInfo()
 			local isPlayerOrAlt = self._isPlayerFunc(ownerStr, true)
@@ -847,9 +851,10 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		local quantity = ...
 		state.lastBuyQuantity = 0
 		state.lastBuyIndex = nil
-		-- 3.3.5 sniper buyout fix (part 6): fresh confirmed buy, so reset the
-		-- no-requery re-bid retry counter used by ACTION_BUYOUT_FUTURE_DONE.
-		self._buyoutRetries = nil
+		-- 3.3.5 fail-loop fix: do NOT reset _buyoutRetries here — every retry click
+		-- re-enters this action, so resetting per-click made the consecutive-failure
+		-- limit in ACTION_BUYOUT_FUTURE_DONE unreachable. It is reset on success and
+		-- on selection change instead.
 		local index = (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic()) and tremove(state.findResult, #state.findResult) or nil
 		if (LibTSMUI.IsVanillaClassic() or LibTSMUI.IsBCClassic() or LibTSMUI.IsWrathClassic()) and not index then
 			-- Didn't find the full amount
@@ -883,6 +888,21 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				end
 			end
 			if not ok then
+				-- 3.3.5 multi-buy fix: when buying several identical lots, the first
+				-- successful buyout reflows the AH list (indexes shift, remaining lots
+				-- may now live on a different page), so the stored find indexes go stale
+				-- and the live-list re-locate above can legitimately miss a REAL lot.
+				-- Before giving up, re-run the find once (fresh page walk) and replay
+				-- the buy automatically via pendingBuyOnFind. One-shot guarded to avoid
+				-- refind loops when the lot is genuinely gone.
+				if not self._vanishRefindDone then
+					self._vanishRefindDone = true
+					state.findHash = nil
+					state.findResult = nil
+					state.findDeferred = false
+					state.pendingBuyOnFind = true
+					return manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
+				end
 				-- Lot vanished between find and confirm. Don't loop through another find
 				-- (which would set findResult=nil and freeze the buttons grey for the full
 				-- per-item walk). Just remove the row and clear the selection — same UX
@@ -929,6 +949,10 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			return
 		end
 		if result then
+			-- 3.3.5 multi-buy fix: successful buy, so re-arm the one-shot
+			-- stale-index refind and the consecutive-failure counter
+			self._vanishRefindDone = nil
+			self._buyoutRetries = nil
 			Mail.HandleAuctionPurchase(ItemString.ToLevel(state.selectedAuction:GetItemString()), state.lastBuyQuantity)
 			state.numConfirmed = min(state.numConfirmed + ((not LibTSMUI.IsVanillaClassic() and not LibTSMUI.IsBCClassic() and not LibTSMUI.IsWrathClassic()) and state.lastBuyQuantity or 1), state.numFound)
 			manager:ProcessAction("ACTION_REMOVE_BOUGHT_AUCTIONS", state.lastBuyQuantity)
@@ -946,6 +970,39 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		else
 			local _, rawLink = state.selectedAuction:GetLinks()
 			ChatMessage.PrintfUser(L["Failed to buy auction of %s."], rawLink)
+			-- 3.3.5 fail-loop fix: count consecutive failed buys of the SAME selected
+			-- lot. After a long rapid buy streak the lot can be genuinely gone (bought
+			-- by someone else / server-side reject) while its stale index still matches
+			-- an on-page row, so the old put-index-back-and-refind path retried forever
+			-- ("Failed to buy" spam every click). After 3 consecutive failures treat the
+			-- lot as vanished: drop it from the results and clear the selection.
+			self._buyoutRetries = (self._buyoutRetries or 0) + 1
+			if self._buyoutRetries >= 3 then
+				self._buyoutRetries = nil
+				self._vanishRefindDone = nil
+				if state.selectedAuction:IsSubRow() then
+					state.selectedAuction:GetResultRow():RemoveSubRow(state.selectedAuction)
+				end
+				state.numBid = 0
+				state.numBought = 0
+				state.numConfirmed = 0
+				state.lastBuyQuantity = 0
+				state.lastBuyIndex = nil
+				state.findHash = nil
+				state.findResult = nil
+				state.findDeferred = false
+				state.pendingBuyOnFind = false
+				state.pendingBidOnFind = false
+				if state.auctionScrollTable then
+					state.auctionScrollTable:SetSelectedRow(nil)
+				end
+				manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
+				if self._scanPausedForSelection then
+					self._scanPausedForSelection = false
+					manager:ProcessAction("ACTION_RESUME_SCAN")
+				end
+				return
+			end
 			-- 3.3.5: the buyout future resolved false (server dropped the bid). Do NOT
 			-- re-bid re-entrantly here: this handler runs from Future:_HandleFutureDone,
 			-- which only clears state.pendingFuture AFTER we return, so calling
