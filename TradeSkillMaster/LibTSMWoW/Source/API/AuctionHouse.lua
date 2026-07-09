@@ -265,6 +265,11 @@ end
 ---Gets the number of black market auction house items.
 ---@return number?
 function AuctionHouse.GetNumBlackMarketAuctions()
+	-- 3.3.5 fix: no Black Market AH on WotLK; the C_BlackMarket bootstrap stub
+	-- returns nil/garbage, so hard-guard here to keep any caller safe
+	if not ClientInfo.HasFeature(ClientInfo.FEATURES.BLACK_MARKET_AH) then
+		return 0
+	end
 	return C_BlackMarket.GetNumItems()
 end
 
@@ -279,6 +284,10 @@ end
 ---@return string itemLink
 ---@return number bmId
 function AuctionHouse.GetBlackMarketItemInfo(index)
+	-- 3.3.5 fix: no Black Market AH on WotLK (see GetNumBlackMarketAuctions)
+	if not ClientInfo.HasFeature(ClientInfo.FEATURES.BLACK_MARKET_AH) then
+		return nil
+	end
 	local _, _, quantity, _, _, _, _, _, minBid, minIncr, currBid, _, numBids, timeLeft, itemLink, bmId = C_BlackMarket.GetItemInfoByIndex(index)
 	return quantity, minBid, minIncr, currBid, numBids, timeLeft, itemLink, bmId
 end
