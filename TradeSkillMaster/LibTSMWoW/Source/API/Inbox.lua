@@ -8,6 +8,7 @@ local LibTSMWoW = select(2, ...).LibTSMWoW
 local Inbox = LibTSMWoW:Init("API.Inbox")
 local ClientInfo = LibTSMWoW:Include("Util.ClientInfo")
 local EnumType = LibTSMWoW:From("LibTSMUtil"):Include("BaseType.EnumType")
+local String = LibTSMWoW:From("LibTSMUtil"):Include("Lua.String")
 local MAIL_TYPE = EnumType.NewNested("MAIL_TYPE", {
 	SALE = {
 		AUCTION = EnumType.NewValue(),
@@ -43,6 +44,10 @@ Inbox.MAIL_TYPE = MAIL_TYPE
 local EXPIRED_MATCH_TEXT = gsub(AUCTION_EXPIRED_MAIL_SUBJECT, "%%s", "")
 local CANCELLED_MATCH_TEXT = gsub(AUCTION_REMOVED_MAIL_SUBJECT, "%%s", "")
 local OUTBID_MATCH_TEXT = gsub(AUCTION_OUTBID_MAIL_SUBJECT, "%%s", "(.+)")
+-- 3.3.5 fix: pattern to detect sale mails by subject when the server doesn't
+-- provide invoice data (GetInboxInvoiceInfo returning nil is common on 3.3.5a
+-- private cores); also used to extract the item name from the subject
+local SOLD_MATCH_PATTERN = String.FormatToMatchPattern(AUCTION_SOLD_MAIL_SUBJECT)
 
 
 
@@ -90,6 +95,18 @@ function Inbox.GetInvoiceInfo(index)
 	return itemName, playerName, bid, buyout, deposit, consignment, etaHour, etaMin, count
 end
 
+---3.3.5 fix: extracts the sold item name from a sale mail's subject line.
+---Used as a fallback when the server provides no invoice data.
+---@param subject string The mail subject
+---@return string? itemName
+function Inbox.GetSaleItemNameFromSubject(subject)
+	if not subject then
+		return nil
+	end
+	local itemName = strmatch(subject, SOLD_MATCH_PATTERN)
+	return itemName and itemName ~= "" and itemName or nil
+end
+
 ---Gets the crafting order info for a mail.
 ---@param index number The mail index
 ---@return number? reason
@@ -117,6 +134,16 @@ function Inbox.GetMailType(index)
 	elseif invoiceType == "buyer" then
 		return MAIL_TYPE.BUY.AUCTION
 	end
+	-- 3.3.5 fix: some 3.3.5a private cores (incl. Warmane) don't attach invoice data
+	-- to AH sale mails, so GetInboxInvoiceInfo returns nil and sales were silently
+	-- misclassified as OTHER.GOLD (never recorded into Accounting / avgsell).
+	-- Fall back to detecting sales by the localized "Auction successful: X" subject.
+	if not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		local _, headerMoney, _, _, headerSubject = Inbox.GetHeaderInfo(index)
+		if headerSubject and headerMoney > 0 and strmatch(headerSubject, SOLD_MATCH_PATTERN) then
+			return MAIL_TYPE.SALE.AUCTION
+		end
+	end
 
 	-- Check for letters
 	local sender, money, cod, numItems, subject, _, _, isGM, canReply = Inbox.GetHeaderInfo(index)
@@ -143,13 +170,16 @@ function Inbox.GetMailType(index)
 	end
 
 	-- Check for other auction mail
-	if strfind(subject, CANCELLED_MATCH_TEXT) then
+	-- 3.3.5/locale fix: use plain-text find for the cancelled/expired subjects; the
+	-- localized Blizzard strings can contain Lua pattern magic characters (e.g. "-")
+	-- which would corrupt pattern-based matching on non-English clients
+	if strfind(subject, CANCELLED_MATCH_TEXT, 1, true) then
 		if money > 0 then
 			return MAIL_TYPE.CANCEL.BID
 		else
 			return MAIL_TYPE.CANCEL.AUCTION
 		end
-	elseif strfind(subject, EXPIRED_MATCH_TEXT) then
+	elseif strfind(subject, EXPIRED_MATCH_TEXT, 1, true) then
 		return MAIL_TYPE.EXPIRE.AUCTION
 	elseif strfind(subject, OUTBID_MATCH_TEXT) then
 		return MAIL_TYPE.OTHER.OUTBID
