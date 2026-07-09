@@ -17,6 +17,7 @@ local UIUtils = TSM.LibTSMUI:Include("Util.UIUtils")
 local Event = TSM.LibTSMWoW:Include("Service.Event")
 local DefaultUI = TSM.LibTSMWoW:Include("UI.DefaultUI")
 local ItemString = TSM.LibTSMTypes:Include("Item.ItemString")
+local L = TSM.Locale.GetTable()
 local private = {
 	frame = nil,
 	scanState = nil, -- nil | "querying" | "processing" | "paged" | "done"
@@ -126,7 +127,7 @@ private.throttlePollFrame:SetScript("OnUpdate", function(self, elapsed)
 		self:Hide()
 		self._elapsed = nil
 		if private.scanState == "paged" then
-			ChatMessage.PrintfUser("Server throttle never cleared — aborting scan.")
+			ChatMessage.PrintfUser(L["Server throttle never cleared - aborting scan."])
 			private.AbortScan()
 		end
 		return
@@ -145,7 +146,7 @@ local function StartThrottlePoll()
 	private.throttlePollFrame:Show()
 end
 
--- Anti-AFK: раз в ANTI_AFK_INTERVAL отправляем /say "1" в чат — сервер видит chat-пакет и сбрасывает idle-таймер.
+-- Anti-AFK: раз в ANTI_AFK_INTERVAL отправляем /say "1" в чат — сервер ви��ит chat-пакет и сбрасывает idle-таймер.
 local ANTI_AFK_INTERVAL = 300
 private.antiAfkFrame = private.antiAfkFrame or CreateFrame("Frame")
 private.antiAfkFrame:Hide()
@@ -182,7 +183,9 @@ function FullScan.OnInitialize()
 	if not (ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic()) then
 		return
 	end
-	TSM.UI.AuctionUI.RegisterTopLevelPage("Scan", private.GetFrame)
+	-- 3.3.5 locale fix: the tab name was a hardcoded English literal, so it never
+	-- translated when the addon language was switched to ruRU
+	TSM.UI.AuctionUI.RegisterTopLevelPage(L["Scan"], private.GetFrame)
 end
 
 
@@ -201,7 +204,7 @@ function private.GetFrame()
 			:SetHeight(24)
 			:SetMargin(0, 0, 0, 6)
 			:SetFont("BODY_BODY1_BOLD")
-			:SetText("Full Auction House Scan")
+			:SetText(L["Full Auction House Scan"])
 		)
 		:AddChild(UIElements.New("HorizontalLine", "titleLine")
 			:SetMargin(0, 0, 0, 12)
@@ -211,7 +214,7 @@ function private.GetFrame()
 			:SetHeight(80)
 			:SetMargin(0, 0, 0, 12)
 			:SetFont("BODY_BODY2")
-			:SetText("Scan the entire Auction House and save its prices to your local AuctionDB.\n\n|cffffd839Fast Scan|r  -  single getAll request, reads everything at once, no cooldown.\n|cffffd839Slow Scan|r  -  page by page, slower but no cooldown.")
+			:SetText(format(L["Scan the entire Auction House and save its prices to your local AuctionDB.\n\n|cffffd839%s|r  -  single getAll request, reads everything at once, no cooldown.\n|cffffd839%s|r  -  page by page, slower but no cooldown."], L["Fast Scan"], L["Slow Scan"]))
 		)
 		:AddChild(UIElements.New("Frame", "buttonsRow")
 			:SetLayout("HORIZONTAL")
@@ -220,47 +223,47 @@ function private.GetFrame()
 			:AddChild(UIElements.New("ActionButton", "fastBtn")
 				:SetWidth(140)
 				:SetMargin(0, 8, 0, 0)
-				:SetText("Fast Scan")
-				:SetScript("OnClick", private.OnFastScanClick)
+				:SetText(L["Fast Scan"])
+					:SetScript("OnClick", private.OnFastScanClick)
 			)
 			:AddChild(UIElements.New("ActionButton", "slowBtn")
 				:SetWidth(140)
 				:SetMargin(0, 8, 0, 0)
-				:SetText("Slow Scan")
-				:SetScript("OnClick", private.OnSlowScanClick)
+				:SetText(L["Slow Scan"])
+					:SetScript("OnClick", private.OnSlowScanClick)
 			)
 			:AddChild(UIElements.New("Spacer", "spacer"))
 			:AddChild(UIElements.New("ActionButton", "abortBtn")
 				:SetWidth(120)
-				:SetText("Abort")
-				:SetScript("OnClick", private.OnAbortClick)
+				:SetText(L["Abort"])
+					:SetScript("OnClick", private.OnAbortClick)
 			)
 		)
 		:AddChild(UIElements.New("ProgressBar", "progressBar")
 			:SetHeight(24)
 			:SetMargin(0, 0, 0, 12)
 			:SetProgress(0)
-			:SetText("Idle")
+				:SetText(L["Idle"])
 		)
 		:AddChild(UIElements.New("Text", "result")
 			:SetMargin(0, 8, 0, 0)
 			:SetFont("BODY_BODY3")
-			:SetText("Open the Auction House, then run Fast or Slow Scan.")
+			:SetText(L["Open the Auction House, then run Fast or Slow Scan."])
 		)
 	return private.frame
 end
 
 function private.PreflightChecks()
 	if private.scanState and private.scanState ~= "done" then
-		ChatMessage.PrintfUser("Scan already in progress. Use Abort to stop it.")
+		ChatMessage.PrintfUser(L["Scan already in progress. Use Abort to stop it."])
 		return false
 	end
 	if private.scanState == "done" then
-		ChatMessage.PrintfUser("Previous scan still cleaning up, wait a moment.")
+		ChatMessage.PrintfUser(L["Previous scan still cleaning up, wait a moment."])
 		return false
 	end
 	if not DefaultUI.IsAuctionHouseVisible() then
-		ChatMessage.PrintfUser("Open the Auction House first.")
+		ChatMessage.PrintfUser(L["Open the Auction House first."])
 		return false
 	end
 	return true
@@ -270,7 +273,7 @@ function private.OnFastScanClick()
 	if not private.PreflightChecks() then return end
 	local canQuery = CanSendAuctionQuery()
 	if not canQuery then
-		ChatMessage.PrintfUser("Cannot query auction right now (throttled).")
+		ChatMessage.PrintfUser(L["Cannot query auction right now (throttled)."])
 		return
 	end
 	-- No getAll cooldown gate: private servers ignore the 15-min client cooldown,
@@ -282,7 +285,7 @@ function private.OnSlowScanClick()
 	if not private.PreflightChecks() then return end
 	local canQuery = CanSendAuctionQuery()
 	if not canQuery then
-		ChatMessage.PrintfUser("Cannot query auction right now (throttled).")
+		ChatMessage.PrintfUser(L["Cannot query auction right now (throttled)."])
 		return
 	end
 	private.StartPagedScan()
@@ -290,14 +293,14 @@ end
 
 function private.OnAbortClick()
 	if not private.scanState or private.scanState == "done" then
-		ChatMessage.PrintfUser("No active scan to abort.")
+		ChatMessage.PrintfUser(L["No active scan to abort."])
 		return
 	end
 	private.AbortScan()
 end
 
 function private.AbortScan()
-	ChatMessage.PrintfUser("Scan aborted by user.")
+	ChatMessage.PrintfUser(L["Scan aborted by user."])
 	private.scanState = "done"
 	private.UnregisterGetAll()
 	private.UnregisterPaged()
@@ -343,7 +346,7 @@ function private.StartGetAllScan()
 	private.timeoutToken = (private.timeoutToken or 0) + 1
 	local myToken = private.timeoutToken
 
-	private.SafeUpdateUI("Fast Scan: waiting for server (getAll)...", 0.05)
+	private.SafeUpdateUI(L["Fast Scan: waiting for server (getAll)..."], 0.05)
 
 	Event.Register("AUCTION_ITEM_LIST_UPDATE", private.OnGetAllResult)
 	private.getAllRegistered = true
@@ -352,7 +355,7 @@ function private.StartGetAllScan()
 	-- If getAll doesn't respond or returns an empty list, fall back to the classic paged scan.
 	C_Timer.After(GETALL_TIMEOUT, function()
 		if private.scanState == "querying" and private.mode == "getAll" and private.timeoutToken == myToken then
-			ChatMessage.PrintfUser("Fast Scan returned no data or timed out. Falling back to Slow Scan.")
+			ChatMessage.PrintfUser(L["Fast Scan returned no data or timed out. Falling back to Slow Scan."])
 			private.FallbackToPagedScan("Fast Scan timed out; switching to Slow Scan...")
 		end
 	end)
@@ -364,14 +367,14 @@ function private.OnGetAllResult()
 
 	local numBatch = GetNumAuctionItems("list")
 	if numBatch == 0 then
-		ChatMessage.PrintfUser("Fast Scan returned no data. Falling back to Slow Scan.")
+		ChatMessage.PrintfUser(L["Fast Scan returned no data. Falling back to Slow Scan."])
 		private.FallbackToPagedScan("Fast Scan returned no data; switching to Slow Scan...")
 		return
 	end
 
 	private.totalAuctions = numBatch
 	private.scanState = "processing"
-	private.SafeUpdateUI(string.format("Processing %d auctions...", numBatch), 0.1)
+	private.SafeUpdateUI(string.format(L["Processing %d auctions..."], numBatch), 0.1)
 	private.ProcessChunk(1, numBatch)
 end
 
@@ -394,7 +397,7 @@ function private.TryStealthGetAll()
         return
     end
     if private.scanState and private.scanState ~= "done" then
-        ChatMessage.PrintfUser("Scan already in progress. Use Abort to stop it.")
+        ChatMessage.PrintfUser(L["Scan already in progress. Use Abort to stop it."])
         return
     end
     if not DefaultUI.IsAuctionHouseVisible() then
@@ -509,7 +512,7 @@ function private.StartPagedScanImpl()
 	private.stats = private.stats or { noLink = 0, noItemString = 0, noBuyout = 0, ok = 0, retryFound = 0, pageRetries = 0 }
 	private.startTime = private.startTime ~= 0 and private.startTime or GetTime()
 	private.throttleWaits = 0
-	private.SafeUpdateUI("Paged scan: page 1...", 0.05)
+	private.SafeUpdateUI(string.format(L["Paged scan: page %d..."], 1), 0.05)
 	-- [debug off] ChatMessage.PrintfUser(string.format("|cff00ff00[FullScan]|r Slow scan start (%s)", date("%H:%M:%S")))
 	private.StartAntiAfk() -- держим персонажа активным на время долгого скана
 	private.QueryNextPage()
@@ -545,7 +548,7 @@ function private.QueryNextPage()
 	local pageAtStart = private.currentPage
 	C_Timer.After(PAGE_TIMEOUT, function()
 		if private.scanState == "paged" and private.currentPage == pageAtStart and private.pagedRegistered then
-			ChatMessage.PrintfUser(string.format("Page %d timed out after %ds — aborting.", pageAtStart + 1, PAGE_TIMEOUT))
+			ChatMessage.PrintfUser(string.format(L["Page %d timed out after %ds - aborting."], pageAtStart + 1, PAGE_TIMEOUT))
 			private.AbortScan()
 		end
 	end)
@@ -650,7 +653,7 @@ function private.OnPagedResult()
 				passesSoFar + 1, MAX_LINK_RESOLVE_PASSES))
 		end
 		private.SafeUpdateUI(
-			string.format("Page %d/%d resolving %d links (pass %d/%d)...",
+			string.format(L["Page %d/%d resolving %d links (pass %d/%d)..."],
 				private.currentPage + 1, private.totalPages,
 				pageMissing, passesSoFar + 1, MAX_LINK_RESOLVE_PASSES),
 			0.05 + (private.currentPage / private.totalPages) * 0.9
@@ -709,7 +712,7 @@ function private.AdvanceToNextPage(numBatch)
 
 	local progress = 0.05 + (private.currentPage / private.totalPages) * 0.9
 	private.SafeUpdateUI(
-		FormatProgressLine("Page", private.currentPage + 1, private.totalPages),
+		FormatProgressLine(L["Page"], private.currentPage + 1, private.totalPages),
 		progress
 	)
 
@@ -743,7 +746,7 @@ function private.AdvanceToNextPage(numBatch)
 	end
 end
 
--- Возвращает: pageOk, pageMissing. missingOut (опц.) — массив, в который складываются
+-- ��озвращает: pageOk, pageMissing. missingOut (опц.) — массив, в который складываются
 -- индексы с nil-линком (для локального добора без re-query).
 function private.ProcessPageAuctions(count, missingOut)
 	local pageOk, pageMissing = 0, 0
@@ -835,7 +838,7 @@ function private.ProcessChunk(startIdx, total)
 	end
 
 	local progress = 0.1 + (endIdx / total) * 0.7
-	private.SafeUpdateUI(FormatProgressLine("Processing", endIdx, total), progress)
+	private.SafeUpdateUI(FormatProgressLine(L["Processing"], endIdx, total), progress)
 
 	if endIdx < total then
 		C_Timer.After(0.02, function()
@@ -854,7 +857,7 @@ function private.StartRetryPass()
 	end
 	if private.retryPass >= MAX_RETRY_PASSES then
 		if ChatMessage and ChatMessage.PrintfUser then
-			ChatMessage.PrintfUser(string.format("Skipped %d auctions after %d retries (item cache).", #private.missingIndices, MAX_RETRY_PASSES))
+			ChatMessage.PrintfUser(string.format(L["Skipped %d auctions after %d retries (item cache)."], #private.missingIndices, MAX_RETRY_PASSES))
 		end
 		private.FinishScan()
 		return
@@ -863,7 +866,7 @@ function private.StartRetryPass()
 	private.retryPass = private.retryPass + 1
 	local pending = private.missingIndices
 	private.missingIndices = {} -- очищаем, новые failures пойдут сюда
-	private.SafeUpdateUI(string.format("Retry pass %d/%d (%d items)...", private.retryPass, MAX_RETRY_PASSES, #pending), 0.85 + private.retryPass * 0.03)
+	private.SafeUpdateUI(string.format(L["Retry pass %d/%d (%d items)..."], private.retryPass, MAX_RETRY_PASSES, #pending), 0.85 + private.retryPass * 0.03)
 
 	-- Делаем pass через RETRY_DELAY чтобы item cache успел подгрузиться
 	C_Timer.After(RETRY_DELAY, function()
@@ -943,19 +946,19 @@ function private.FinishScan()
 	local elapsed = GetTime() - private.startTime
 	private.scanState = "done"
 	private.SafeUpdateUI(
-		string.format("Done! %d auctions, %d items in %.1fs (%s mode)",
+		string.format(L["Done! %d auctions, %d items in %.1fs (%s mode)"],
 			private.totalAuctions, recordCount, elapsed, private.mode or "?"),
 		1.0
 	)
 	ChatMessage.PrintfUser(string.format(
-		"Full scan complete: %d auctions, %d items saved to local AuctionDB (%.1fs)",
+		L["Full scan complete: %d auctions, %d items saved to local AuctionDB (%.1fs)"],
 		private.totalAuctions, recordCount, elapsed
 	))
 
 	C_Timer.After(3, function()
 		private.scanState = nil
 		private.scanData = nil
-		private.SafeUpdateUI("Idle", 0)
+		private.SafeUpdateUI(L["Idle"], 0)
 	end)
 end
 
