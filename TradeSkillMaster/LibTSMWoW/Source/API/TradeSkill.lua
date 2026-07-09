@@ -230,7 +230,13 @@ end
 ---@return string?
 function TradeSkill.GetLink()
 	if not ClientInfo.HasFeature(ClientInfo.FEATURES.C_TRADE_SKILL_UI) then
-		return nil
+		-- 3.3.5 fix: the native GetTradeSkillListLink() global exists on WotLK
+		-- clients (except for classic crafting professions like Enchanting), so use
+		-- it instead of always returning nil (which broke profession link features)
+		if TradeSkill.IsClassicCrafting() or not GetTradeSkillListLink then
+			return nil
+		end
+		return GetTradeSkillListLink()
 	end
 	return C_TradeSkillUI.GetTradeSkillListLink()
 end
