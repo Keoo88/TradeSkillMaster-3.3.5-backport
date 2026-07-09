@@ -98,6 +98,26 @@ function CancelScan.DoProcess()
 	if auctionId then
 		local usedAuctionIndex = (not ClientInfo.IsVanillaClassic() and not ClientInfo.IsBCClassic() and not ClientInfo.IsWrathClassic()) and auctionId or (itemString..buyout..currentBid..auctionId)
 		private.usedAuctionIndex[usedAuctionIndex] = true
+		-- 3.3.5 fix: on classic clients auctionId is just the owner-list INDEX, and
+		-- indexes shift after every successful cancel/sale until the owned list is
+		-- rescanned. Verify the live owner-list row at this index still matches the
+		-- item/prices we intend to cancel; if it doesn't, fail this cancel (it will
+		-- be retried after the owned auctions rescan) instead of cancelling a wrong lot.
+		if not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+			local liveLink = GetAuctionItemLink("owner", auctionId)
+			-- Compare base itemStrings (autoBaseItemString is group-translated, so
+			-- reduce both sides to their base for a reliable identity check)
+			local liveBase = liveLink and ItemString.GetBase(liveLink)
+			local expectedBase = ItemString.GetBaseFast(itemString)
+			local _, _, _, _, _, _, liveMinBid, _, liveBuyout, liveBid, liveHighBidder = GetAuctionItemInfo("owner", auctionId)
+			local liveCurrentBid = (liveHighBidder and liveHighBidder ~= "") and liveBid or liveMinBid
+			if liveBase ~= expectedBase or (liveBuyout or 0) ~= buyout or (liveCurrentBid or 0) ~= currentBid then
+				Log.Warn("Owner-list index %d shifted (item %s vs %s); skipping cancel until rescan", auctionId, tostring(liveBase), tostring(expectedBase))
+				cancelRow:SetField("numProcessed", cancelRow:GetField("numProcessed") + 1)
+					:Update()
+				return false, false
+			end
+		end
 		local result = AuctionHouseWrapper.CancelAuction(auctionId)
 		local isRowDone = cancelRow:GetField("numProcessed") + 1 == cancelRow:GetField("numStacks")
 		cancelRow:SetField("numProcessed", cancelRow:GetField("numProcessed") + 1)
