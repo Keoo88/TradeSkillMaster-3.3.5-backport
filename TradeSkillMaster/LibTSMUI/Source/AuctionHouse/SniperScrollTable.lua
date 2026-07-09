@@ -15,7 +15,15 @@ local EXPANDER_TEXTURE_EXPANDED = "iconPack.12x12/Caret/Down"
 local EXPANDER_TEXTURE_COLLAPSED = "iconPack.12x12/Caret/Right"
 local RECENT_TEXTURE = "iconPack.14x14/Attention"
 local REMOVE_TEXTURE = "iconPack.14x14/Close/Default"
-local COL_INFO = {
+-- 3.3.5 locale fix: build COL_INFO lazily at __init time so column titles pick up
+-- the saved TSM language override, which is only applied at ADDON_LOADED — a static
+-- file-load table froze them in the game client's language (see AuctionScrollTable)
+local COL_INFO = nil
+local function GetColInfo()
+	if COL_INFO then
+		return COL_INFO
+	end
+	COL_INFO = {
 	icon = {
 		titleIcon = RECENT_TEXTURE,
 		justifyH = "CENTER",
@@ -86,7 +94,9 @@ local COL_INFO = {
 		justifyH = "RIGHT",
 		font = "TABLE_TABLE1",
 	},
-}
+	}
+	return COL_INFO
+end
 
 
 
@@ -104,7 +114,7 @@ SniperScrollTable:_AddActionScripts("OnRowRemoved")
 -- ============================================================================
 
 function SniperScrollTable:__init()
-	self.__super:__init(COL_INFO)
+	self.__super:__init(GetColInfo())
 	-- Store data for the timeLeft even though we don't have this column to reuse AuctionScrollTable code
 	self._data.timeLeft = {}
 	self._highestBrowseId = 0

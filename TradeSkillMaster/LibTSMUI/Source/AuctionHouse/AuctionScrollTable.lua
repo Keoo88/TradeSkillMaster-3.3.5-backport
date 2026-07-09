@@ -30,7 +30,17 @@ local ICON_SPACING = 4
 local EXPANDER_TEXTURE_EXPANDED = "iconPack.12x12/Caret/Down"
 local EXPANDER_TEXTURE_COLLAPSED = "iconPack.12x12/Caret/Right"
 local RUNNING_TEXTURE = "iconPack.12x12/Running"
-local COL_INFO = {
+-- 3.3.5 locale fix: COL_INFO is built by GetDefaultColInfo() at __init time instead
+-- of being a static file-load table. At file-load the saved TSM language override
+-- (Settings > General) hasn't been applied yet (it applies at ADDON_LOADED), so a
+-- static table froze the column titles in the game client's language (English on an
+-- enUS client even with the ru override selected).
+local COL_INFO = nil
+local function GetDefaultColInfo()
+	if COL_INFO then
+		return COL_INFO
+	end
+	COL_INFO = {
 	item = {
 		title = L["Item"],
 		justifyH = "LEFT",
@@ -99,7 +109,9 @@ local COL_INFO = {
 		justifyH = "RIGHT",
 		font = "TABLE_TABLE1",
 	},
-}
+	}
+	return COL_INFO
+end
 
 
 
@@ -117,7 +129,7 @@ AuctionScrollTable:_AddActionScripts("OnSelectionChanged")
 -- ============================================================================
 
 function AuctionScrollTable:__init(colInfo)
-	self.__super:__init(colInfo or COL_INFO)
+	self.__super:__init(colInfo or GetDefaultColInfo())
 	self._customSourceItemStringDataCol = "item_tooltip"
 	self._data.baseItemString = {}
 	self._auctionScan = nil
@@ -1254,7 +1266,17 @@ function private.RowsEqual(a, b)
 	elseif a:IsSubRow() ~= b:IsSubRow() then
 		return false
 	elseif a:IsSubRow() then
-		return a:GetHashes() == b:GetHashes()
+		-- 3.3.5 fix: compare sub rows by object identity, NOT by hash.
+		-- On 3.3.5 auctionId is always 0 and the seller is often not yet loaded ("?"),
+		-- so identical lots (same item/price/qty) produce IDENTICAL hashes. browseId
+		-- doesn't help either: it's a per-scan-batch counter, so all duplicates found
+		-- in the same batch share it too. Hash-based equality made _SetSelectedRow()
+		-- treat a click on any duplicate lot as "already selected" and ignore it, and
+		-- the more pages of the same item were scanned, the more unselectable
+		-- duplicates accumulated. Object identity is what the rest of this table
+		-- already uses (Table.KeyByValue, the `data == selection` loop), and distinct
+		-- entries in _rawData are always distinct objects.
+		return a == b
 	else
 		return a:GetBaseItemString() == b:GetBaseItemString()
 	end
