@@ -209,7 +209,25 @@ function private.ScanThread(auctionScan, filterStr)
 					auctionScan:SetScript("OnQueryDone", private.OnQueryDone)
 				else
 					local query = auctionScan:NewQuery()
-					query:SetStr(itemFilter:GetStr(), itemFilter:GetExactOnly())
+					-- 3.3.5 backport: if the search string exactly matches a known item name,
+					-- convert it to an itemString and run a fast exact search instead of a
+					-- slow substring scan across all pages
+					local searchStr = itemFilter:GetStr()
+					local exactItemString = itemFilter:GetItem()
+					if not exactItemString and searchStr ~= "" then
+						exactItemString = ItemInfo.ItemNameToItemString(searchStr)
+						if exactItemString == ItemString.GetUnknown() then
+							-- multiple distinct items share this name; can't do an exact item search
+							exactItemString = nil
+						end
+						if exactItemString then
+							query:SetStr(searchStr, true)
+						else
+							query:SetStr(searchStr, itemFilter:GetExactOnly())
+						end
+					else
+						query:SetStr(searchStr, itemFilter:GetExactOnly())
+					end
 					query:SetQualityRange(itemFilter:GetMinQuality(), itemFilter:GetMaxQuality())
 					query:SetLevelRange(itemFilter:GetMinLevel(), itemFilter:GetMaxLevel())
 					query:SetItemLevelRange(itemFilter:GetMinItemLevel(), itemFilter:GetMaxItemLevel())
@@ -218,7 +236,9 @@ function private.ScanThread(auctionScan, filterStr)
 					query:SetUncollected(itemFilter:GetUncollected())
 					query:SetUpgrades(itemFilter:GetUpgrades())
 					query:SetPriceRange(itemFilter:GetMinPrice(), itemFilter:GetMaxPrice())
-					query:SetItems(itemFilter:GetItem())
+					if exactItemString then
+						query:SetItems(exactItemString)
+					end
 					-- luacheck: globals CanIMogIt
 					if CanIMogIt and CanIMogIt.PlayerKnowsTransmog then
 						query:SetUnlearned(itemFilter:GetAddedKeyValue("unlearned"))
