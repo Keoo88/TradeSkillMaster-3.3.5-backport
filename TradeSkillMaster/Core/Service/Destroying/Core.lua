@@ -144,6 +144,19 @@ function Destroying.OnInitialize(settingsDB)
 	end
 	Event.Register("UNIT_SPELLCAST_INTERRUPTED", private.SpellCastEventHandler)
 	Event.Register("UNIT_SPELLCAST_SUCCEEDED", private.SpellCastEventHandler)
+	-- 3.3.5 fix: the canDestroy/destroyQuantity caches were only populated once and
+	-- never invalidated, so learning (or leveling) Enchanting/Jewelcrafting/Inscription
+	-- didn't enable Destroy lines/buttons until a full relog. SKILL_LINES_CHANGED
+	-- fires on 3.3.5a whenever a profession is learned/unlearned/leveled, so wipe the
+	-- caches there and let them lazily repopulate with fresh IsSpellKnown/skill data.
+	Event.Register("SKILL_LINES_CHANGED", function()
+		wipe(private.canDestroyCache)
+		wipe(private.destroyQuantityCache)
+		private.disenchantSkillLevel = nil
+		private.jewelcraftSkillLevel = nil
+		private.inscriptionSkillLevel = nil
+		private.newBagUpdate = true
+	end)
 
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_TRADE_SKILL_UI) then
 		TradeSkill.SecureHookCraftSalvage(function(spellId, _, itemLocation)
