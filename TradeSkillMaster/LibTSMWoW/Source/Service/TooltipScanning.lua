@@ -176,7 +176,13 @@ function private.SetItemId(itemId)
 		private.tooltip:SetItemByID(itemId)
 	else
 		-- 3.3.5: no SetItemByID, fall back to SetHyperlink with constructed item link.
-		private.tooltip:SetHyperlink("item:"..itemId)
+		-- 3.3.5 crash guard: SetHyperlink for an item the client has never seen forces
+		-- a server item query mid-render and can hard-crash the client (Error #132).
+		-- Only scan the tooltip if the item is already in the local cache; an uncached
+		-- item would produce an empty/incomplete tooltip anyway.
+		if GetItemInfo(itemId) then
+			pcall(private.tooltip.SetHyperlink, private.tooltip, "item:"..itemId)
+		end
 	end
 end
 

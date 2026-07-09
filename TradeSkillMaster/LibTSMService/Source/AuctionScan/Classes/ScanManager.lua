@@ -702,6 +702,9 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 
 		-- per-item query, page=0..maxPage
 		local page, maxPage = 0, nil
+		-- 3.3.5 FAST_FIND_POC fix: tracks whether the current page's data fully settled;
+		-- when it didn't (timeout), we must not trust the early-stop heuristic below.
+		local fastPageSettled = true
 		while true do
 			if self._findQuery then
 				self._findQuery:Release()
@@ -716,11 +719,46 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 				if FAST_FIND_POC then
 					-- Use a direct classic query with price sort and scan native browse results
 					-- to avoid building full Query/AuctionRow objects.
-					AuctionHouseWrapper.SetSort(true, true)
-					local future = AuctionHouseWrapper.SendQuery(nameStr, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true, page, nil)
-					local ok = Threading.WaitForFuture(future)
+					-- 3.3.5 fix (rapid clicks): SendQuery on 3.3.5 BYPASSES the
+					-- CanSendAuctionQuery() gate (it only logs a warning). When the user
+					-- clicks lots back-to-back (or right after a buyout), the query throttle
+					-- is still active, the server silently drops QueryAuctionItems, the
+					-- future never resolves for the new page, and the find false-fails ->
+					-- "Failed to find auction" for a lot that exists. Wait for the throttle
+					-- to clear before sending, and retry a dropped page once before giving up.
+					local ok = nil
+					for attempt = 1, 2 do
+						local throttleStart = GetTime and GetTime() or 0
+						while not AuctionHouse.CanSendQuery() do
+							Threading.Yield(true)
+							if self._cancelled then
+								return nil
+							end
+							if (GetTime and GetTime() or 0) - throttleStart > 5 then
+								break
+							end
+						end
+						AuctionHouseWrapper.SetSort(true, true)
+						local future = AuctionHouseWrapper.SendQuery(nameStr, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true, page, nil)
+						ok = Threading.WaitForFuture(future)
+						if ok or self._cancelled then
+							break
+						end
+					end
+					if self._cancelled then
+						return nil
+					end
 					if not ok then
 						break
+					end
+					-- 3.3.5 FAST_FIND_POC fix: the future resolves on the first list update,
+					-- while page data on Warmane is often still incomplete (nil links/buyouts),
+					-- which makes EqualsIndex() reject the lot and causes the false
+					-- "Failed to find auction" spam. Wait for the page to settle like the
+					-- slow Scanner path does before matching.
+					fastPageSettled = self:_WaitForFindPageToSettle()
+					if self._cancelled then
+						return nil
 					end
 				else
 					self._findQuery = AuctionQuery.Get():SetStr(nameStr, true)
@@ -776,7 +814,11 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 
 			-- If the current page's last auction indicates the item cannot be on a later page,
 			-- stop early instead of scanning all pages.
-			if not self:_FindAuctionCanBeOnLaterPage(row) then
+			-- 3.3.5 FAST_FIND_POC fix: only trust the early-stop heuristic when the page
+			-- data fully settled; with partial data the last row's buyout/stackSize can be
+			-- nil/garbage and the heuristic wrongly aborts the find on page 0, producing
+			-- the false "Failed to find auction" result for lots on later pages.
+			if fastPageSettled and not self:_FindAuctionCanBeOnLaterPage(row) then
 				break
 			end
 			local numPages = AuctionHouse.GetNumPages()
@@ -798,6 +840,54 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 		end
 	end
 	return nil
+end
+
+-- 3.3.5 FAST_FIND_POC fix: the lightweight find path resolves its future on the FIRST
+-- AUCTION_ITEM_LIST_UPDATE, but on Warmane the page data (item links, buyouts, stack
+-- sizes) frequently arrives incomplete at that moment (GetAuctionItemLink/Info return
+-- nil for items not yet in the client cache). EqualsIndex() then rejects every row
+-- ("SKIP: incomplete data") and _FindAuctionCanBeOnLaterPage() misjudges the early-stop,
+-- producing the "Лот не найден и удалён из результатов" spam even though the lot exists.
+-- The slow path never hits this because the full Scanner FSM retries incomplete/empty
+-- pages (browsePendingIndexes / BROWSE_EMPTY_RETRY) until the page settles.
+-- This helper reproduces that settling for the fast path: wait (yielding) until every
+-- auction on the current live page has complete core data, with a hard timeout.
+-- Returns true if the page settled completely, false on timeout/cancel (data may be partial).
+function AuctionScanManager.__private:_WaitForFindPageToSettle()
+	local SETTLE_TIMEOUT = 3
+	local EMPTY_GRACE = 1
+	local startTime = GetTime and GetTime() or 0
+	while true do
+		if self._cancelled then
+			return false
+		end
+		local now = GetTime and GetTime() or 0
+		local elapsed = now - startTime
+		local numAuctions = AuctionHouse.GetNumAuctions() or 0
+		if numAuctions == 0 then
+			-- Some 3.3.5a cores briefly report an empty page right after the query;
+			-- give it a short grace period before trusting the empty result.
+			if elapsed > EMPTY_GRACE then
+				return true
+			end
+		else
+			local complete = true
+			for i = 1, numAuctions do
+				local _, itemLink, stackSize, _, buyout = AuctionHouse.GetBrowseResult(i)
+				if not itemLink or not stackSize or not buyout then
+					complete = false
+					break
+				end
+			end
+			if complete then
+				return true
+			end
+			if elapsed > SETTLE_TIMEOUT then
+				return false
+			end
+		end
+		Threading.Yield(true)
+	end
 end
 
 function AuctionScanManager.__private:_FindAuctionCanBeOnLaterPage(row)
@@ -826,26 +916,15 @@ function AuctionScanManager.__private:_FindAuctionCanBeOnLaterPage(row)
 		return false
 	end
 
-	local rowStackSize = row:GetQuantities()
-	if rowStackSize > stackSize then
-		-- Item must be on a later page since it would be sorted after the last auction on this page
-		return true
-	elseif rowStackSize < stackSize then
-		-- Item cannot be on a later page since it would be sorted before the last auction on this page
-		return false
-	end
-
-	seller = seller or "?"
-	local rowSeller = row:GetOwnerInfo()
-	if rowSeller > seller then
-		-- Item must be on a later page since it would be sorted after the last auction on this page
-		return true
-	elseif rowSeller < seller then
-		-- Item cannot be on a later page since it would be sorted before the last auction on this page
-		return false
-	end
-
-	-- All the things we are sorting on are the same, so the auction could be on a later page
+	-- 3.3.5 fix: do NOT tie-break on stackSize/seller here. The find query only
+	-- applies a single "unitprice" sort (PRICE_BROWSE_SORTS_TABLE), so the order of
+	-- same-unit-price lots across pages is server-defined and NOT sorted by
+	-- quantity/seller. High-volume items (potions, gems, herbs) have dozens of lots
+	-- at the same popular price spanning multiple pages, and the old stackSize/seller
+	-- tie-breaks aborted the find on the first mismatching tie ("cannot be on a later
+	-- page"), producing false "Failed to find auction" the deeper the user browsed.
+	-- On a unit-price tie we must keep paging: the lot may legitimately be on any
+	-- later page that still has the same unit price.
 	return true
 end
 

@@ -111,6 +111,13 @@ function Item.RequestServerCache(itemId)
 	if LibTSMWoW.IsRetail() or not itemId then
 		return false
 	end
+	-- 3.3.5 crash guard: never SetHyperlink an item ID the client has no record of.
+	-- GetItemIcon() resolves locally (no server query) and returns nil for IDs that
+	-- don't exist in the client data; SetHyperlink on such IDs can hard-crash the
+	-- 3.3.5 client (Error #132), especially with server-custom/removed items.
+	if not GetItemIcon(itemId) then
+		return false
+	end
 	local now = GetTime()
 	local lastRequest = private.cacheRequestTimes[itemId]
 	if lastRequest and now - lastRequest < CACHE_REQUEST_COOLDOWN then
