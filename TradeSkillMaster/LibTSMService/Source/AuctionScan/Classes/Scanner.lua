@@ -476,7 +476,10 @@ end
 
 ---Cancels any in progress scan.
 function Scanner.Cancel()
-	if private.requestFuture:IsReady() then
+	-- 3.3.5 fix: also skip when the future is already DONE (resolved but not yet
+	-- cleaned up), which happens when cancel races the done timer on AH close;
+	-- calling Done() twice trips the Future.lua:91 assertion
+	if private.requestFuture:IsReady() or private.requestFuture:IsDone() then
 		return
 	end
 	private.requestFuture:Done(false)
@@ -534,6 +537,14 @@ end
 function private.RequestDoneHandler()
 	local result = private.requestResult
 	private.requestResult = nil
+	-- 3.3.5 fix: the done timer fires on the NEXT frame, and the future can be
+	-- resolved in between (e.g. the AH closes mid-scan -> Scanner.Cancel() calls
+	-- Done(false) directly, or a preempt resolves it first). Calling Done() on a
+	-- future that isn't STARTED trips the Future.lua:91 assertion, so bail out if
+	-- there's nothing left to resolve.
+	if private.requestFuture:IsReady() or private.requestFuture:IsDone() then
+		return
+	end
 	private.requestFuture:Done(result)
 end
 
