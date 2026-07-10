@@ -672,6 +672,7 @@ function private.ActionHandler(manager, state, action, ...)
 	if action == "ACTION_SELECTION_FRAME_SHOWN" then
 		local frame = ...
 		state.selectionFrame = frame
+		TSM.Auctioning.PostScan.RefreshBags()
 	elseif action == "ACTION_SELECTION_FRAME_HIDDEN" then
 		state.selectionFrame = nil
 	elseif action == "ACTION_SCAN_FRAME_SHOWN" then

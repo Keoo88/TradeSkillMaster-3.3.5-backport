@@ -214,7 +214,7 @@ function private.ScanThread(auctionScan, filterStr)
 					-- slow substring scan across all pages
 					local searchStr = itemFilter:GetStr()
 					local exactItemString = itemFilter:GetItem()
-					if not exactItemString and searchStr ~= "" then
+					if not exactItemString and searchStr and searchStr ~= "" then
 						exactItemString = ItemInfo.ItemNameToItemString(searchStr)
 						if exactItemString == ItemString.GetUnknown() then
 							-- multiple distinct items share this name; can't do an exact item search

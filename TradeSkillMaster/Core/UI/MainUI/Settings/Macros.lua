@@ -16,7 +16,8 @@ local UIElements = TSM.LibTSMUI:Include("Util.UIElements")
 local UIUtils = TSM.LibTSMUI:Include("Util.UIUtils")
 local private = {}
 local MACRO_NAME = "TSMMacro"
-local MACRO_ICON = ClientInfo.IsRetail() and "Achievement_Faction_GoldenLotus" or "INV_Misc_Flower_01"
+-- 3.3.5: CreateMacro/EditMacro принимают числовой индекс иконки, не строку
+local MACRO_ICON = ClientInfo.IsRetail() and "Achievement_Faction_GoldenLotus" or 1
 local BINDING_NAME = "MACRO "..MACRO_NAME
 local buttonEvent = ClientInfo.IsRetail() and (GetCVarBool("ActionButtonUseKeyDown") and "1" or "0") or nil
 local BUTTON_INFO = {
@@ -228,14 +229,17 @@ function private.CreateButtonOnClick(button)
 		return
 	end
 
+	-- MAX_ACCOUNT_MACROS приходит из load-on-demand Blizzard_MacroUI и может быть
+	-- nil на 3.3.5. Лимит общих макросов = 36. Проверяем ТОЛЬКО при создании
+	-- нового макроса — обновление существующего слот не занимает.
+	if not GetMacroBody(MACRO_NAME) and GetNumMacros() >= (MAX_ACCOUNT_MACROS or 36) then
+		ChatMessage.PrintUser(L["Could not create macro as you already have too many. Delete one of your existing macros and try again."])
+		return
+	end
+
 	-- Remove the old bindings and macros
 	for _, binding in Vararg.Iterator(GetBindingKey(BINDING_NAME)) do
 		SetBinding(binding)
-	end
-
-	if GetNumMacros() >= (MAX_ACCOUNT_MACROS or 18) then
-		ChatMessage.PrintUser(L["Could not create macro as you already have too many. Delete one of your existing macros and try again."])
-		return
 	end
 
 	-- Create the new macro

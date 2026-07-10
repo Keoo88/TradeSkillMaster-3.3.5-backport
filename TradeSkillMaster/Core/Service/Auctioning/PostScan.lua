@@ -57,7 +57,7 @@ function PostScan.OnInitialize(settingsDB)
 		:AddKey("global", "auctioningOptions", "matchWhitelist")
 	private.operationsChangedTimer = DelayTimer.New("POST_SCAN_OPERATIONS_CHANGED", private.UpdateOperationDB)
 	BagTracking.RegisterQuantityCallback(private.UpdateOperationDB)
-	DefaultUI.RegisterAuctionHouseVisibleCallback(private.UpdateOperationDB, true)
+	DefaultUI.RegisterAuctionHouseVisibleCallback(PostScan.RefreshBags, true)
 	private.operationDB = Database.NewSchema("AUCTIONING_OPERATIONS")
 		:AddUniqueStringField("autoBaseItemString")
 		:AddStringField("firstOperation")
@@ -101,6 +101,16 @@ function PostScan.OnInitialize(settingsDB)
 		:Custom(private.NextProcessRowQueryHelper)
 		:OrderBy("auctionId", false)
 	private.statusQuery = private.queueDB:NewQuery()
+end
+
+function PostScan.RefreshBags()
+	-- 3.3.5: BAG_UPDATE ненадёжен при открытии AH (не-рюкзак может не
+	-- стриггерить событие). Форс-рескан гарантирует актуальный список предметов.
+	if not DefaultUI.IsAuctionHouseVisible() then
+		return
+	end
+	BagTracking.RescanAllBags()
+	private.UpdateOperationDB()
 end
 
 function PostScan.CreateBagsQuery()
@@ -230,9 +240,11 @@ end
 
 function PostScan.ChangePostDetail(field, value)
 	local postRow = private.currentRowQuery:GetFirstResult()
-	local isCommodity = ItemInfo.IsCommodity(postRow:GetField("itemString"))
+	-- 3.3.5: нет commodity-системы, но IsCommodity может вернуть true из-за
+	-- неполного ItemDB. assert здесь вызвал бы краш всего PostScan потока.
+	local isCommodity = ClientInfo.IsRetail() and ItemInfo.IsCommodity(postRow:GetField("itemString"))
 	if field == "bid" or field == "itemBid" then
-		assert(not isCommodity)
+		if isCommodity then return end
 		value = max(value, 1)
 		local stackSize = postRow:GetField("stackSize")
 		local itemBid = field == "itemBid" and value or floor(value / stackSize)
@@ -656,7 +668,9 @@ function private.GeneratePosts(itemString, operationName, operationSettings, num
 		extraStack = (maxCanPost < postCap and stackSizeIsCap and (numHave % perAuction)) or 0
 	else
 		assert(maxCanPost == 1)
-		if ItemInfo.IsCommodity(itemString) then
+		-- 3.3.5: нет commodity-системы; false positive от IsCommodity привёл бы
+		-- к неверной commodity-логике постинга (bid = buyout, неправильные стаки)
+		if ClientInfo.IsRetail() and ItemInfo.IsCommodity(itemString) then
 			local maxPerAuction = ItemInfo.GetMaxStack(itemString) * MAX_COMMODITY_STACKS_PER_AUCTION
 			maxCanPost = floor(perAuction / maxPerAuction)
 			-- Check if we can post an extra partial stack
