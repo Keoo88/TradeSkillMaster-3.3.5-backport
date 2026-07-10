@@ -37,10 +37,18 @@ local UPDATE_TIME_KEYS = {
 -- AuctionDB.RecordLocalScanResults so DBMinBuyout / DBMarket etc resolve
 -- to live data instead of nil. Order matters: index = field position in
 -- the shared holder's data tuple.
+-- ВАЖНО: имена здесь — ключи, которые читают источники в TradeSkillMaster.lua:
+--   DBMarket → "marketValue", DBRecent → "marketValueRecent", DBHistorical → "historical".
+-- Позиция в массиве holder'а фиксирована ({mb, mv, na, mkt, hist, ts}),
+-- поэтому index 2 (сырой snapshot mv) обязан называться marketValueRecent,
+-- а index 4 (EMA mkt) — marketValue. Иначе dbmarket/dbrecent меняются местами.
 private.LOCAL_FIELDS = {
-	"minBuyout",   -- index 1
-	"marketValue", -- index 2
-	"numAuctions", -- index 3
+	"minBuyout",         -- index 1  (mb)
+	"marketValueRecent", -- index 2  (mv  = DBRecent: сырой snapshot последнего скана)
+	"numAuctions",       -- index 3  (na)
+	"marketValue",       -- index 4  (mkt = DBMarket:     EMA, ~14-дневный)
+	"historical",        -- index 5  (hist = DBHistorical: EMA, ~60-дневный)
+	"lastScan",          -- index 6  (ts  = время последнего скана per-item для тултипа)
 }
 
 -- 3.3.5: один shared multi-field holder для всех LOCAL_FIELDS. Все ключи
@@ -88,20 +96,28 @@ function AuctionDB.OnEnable()
 		local count = 0
 		local maxTs = 0
 		for itemString, record in pairs(localData) do
-			local mb, mv, na, ts
+			local mb, mv, na, ts, mkt, hist
 			if type(record) == "number" then
 				mb = record
 			elseif type(record) == "table" then
-				mb = record.mb or record.minBuyout
-				mv = record.mv or record.marketValue
-				na = record.na or record.numAuctions
-				ts = record.ts
+				mb   = record.mb   or record.minBuyout
+				mv   = record.mv   or record.marketValue
+				na   = record.na   or record.numAuctions
+				ts   = record.ts
+				mkt  = record.mkt
+				hist = record.hist
 			end
 			if type(mb) == "number" and mb > 0 then
+				local mvVal  = (type(mv)   == "number" and mv   > 0) and mv   or mb
+				local mktVal = (type(mkt)  == "number" and mkt  > 0) and mkt  or mvVal
+				local hvVal  = (type(hist) == "number" and hist > 0) and hist or mktVal
 				private.localHolder.itemLookup[itemString] = {
 					mb,
-					(type(mv) == "number" and mv > 0) and mv or mb,
+					mvVal,
 					(type(na) == "number" and na > 0) and na or 1,
+					mktVal,
+					hvVal,
+					(type(ts) == "number" and ts > 0) and ts or nil,
 				}
 				count = count + 1
 				if type(ts) == "number" and ts > maxTs then
@@ -127,7 +143,8 @@ function AuctionDB.OnEnable()
 	end
 
 	-- Only show warning if no realm data AND no local data (for 3.3.5 private servers)
-	if private.realmUpdateTime == 0 and not private.localHolder then
+	-- (localHolder существует всегда — проверять надо наличие данных в нём)
+	if private.realmUpdateTime == 0 and not AuctionDB.HasLocalScanData() then
 		ChatMessage.PrintfUser(L["TSM doesn't currently have any AuctionDB pricing data for your realm. We recommend you download the TSM Desktop Application from %s to automatically update your AuctionDB data (and auto-backup your TSM settings)."], ChatMessage.ColorUserAccentText("https://tradeskillmaster.com"))
 	end
 
@@ -227,17 +244,28 @@ end
 function AuctionDB.RecordLocalScanResults(results)
 	if type(results) ~= "table" or not private.localHolder then return end
 	local count = 0
+	-- 3.3.5: TSM_AuctionDB_RecordScan вызывается ДО этой функции и аннотировал
+	-- каждую data-таблицу полями mkt/hist (DBMarket/DBHistorical EMA).
+	-- Читаем их прямо из data — не нужно перечитывать SavedVariable.
 	for itemString, data in pairs(results) do
 		itemString = ItemString.Get(itemString) or itemString
 		if type(data) == "table" then
-			local mb = data.mb or data.minBuyout
-			local mv = data.mv or data.marketValue
-			local na = data.na or data.numAuctions
+			local mb   = data.mb  or data.minBuyout
+			local mv   = data.mv  or data.marketValue
+			local na   = data.na  or data.numAuctions
+			local mkt  = data.mkt
+			local hist = data.hist
 			if type(mb) == "number" and mb > 0 then
+				local mvVal  = (type(mv)   == "number" and mv   > 0) and mv   or mb
+				local mktVal = (type(mkt)  == "number" and mkt  > 0) and mkt  or mvVal
+				local hvVal  = (type(hist) == "number" and hist > 0) and hist or mktVal
 				private.localHolder.itemLookup[itemString] = {
 					mb,
-					(type(mv) == "number" and mv > 0) and mv or mb,
+					mvVal,
 					(type(na) == "number" and na > 0) and na or 1,
+					mktVal,
+					hvVal,
+					time(),
 				}
 				count = count + 1
 			end
@@ -249,6 +277,8 @@ function AuctionDB.RecordLocalScanResults(results)
 		private.localScanTime = time()
 		CustomString.InvalidateCache("DBMarket")
 		CustomString.InvalidateCache("DBMinBuyout")
+		CustomString.InvalidateCache("DBRecent")
+		CustomString.InvalidateCache("DBHistorical")
 	end
 end
 
@@ -327,7 +357,14 @@ function private.GetItemDataHelper(tbl, key, itemString)
 		end
 	end
 	local data = private.UnpackData(tbl, itemString)
-	local value = data and data[fieldIndex] or 0
+	if not data then return nil end
+	local value = data[fieldIndex]
+	-- "lastScan" (ts) — это unix timestamp, не цена: не требует value > 0 guard.
+	-- Для остальных полей нулевое или отсутствующее значение = данных нет.
+	if value == nil then return nil end
+	if key == "lastScan" then
+		return value > 0 and value or nil
+	end
 	return value > 0 and value or nil
 end
 
