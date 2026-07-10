@@ -142,7 +142,10 @@ end
 
 function Cost.GetSaleRateByCraftString(craftString)
 	local itemString = TSM.Crafting.GetItemString(craftString)
-	return itemString and CustomString.GetSourceValue("DBRegionSaleRate", itemString) or nil
+	-- 3.3.5: DBRegionSaleRate требует TSM App и всегда возвращает nil — колонка
+	-- Sale Rate в Crafting UI была мертва. Используем локальный Accounting
+	-- SaleRate (личная история продаж/экспираций, та же шкала 0-1).
+	return itemString and CustomString.GetSourceValue("SaleRate", itemString) or nil
 end
 
 function Cost.GetLowestCostByItem(itemString, optionalMats, qualityMats)
