@@ -594,32 +594,31 @@ function private.RecordScanResults(query)
 	local count = 0
 	local prices = {}
 	for baseItemString, row in query:BrowseResultsIterator() do
-		local minBuyout, totalQuantity = nil, 0
+		local minBuyout, auctionCount = nil, 0
 		wipe(prices)
 		for _, subRow in row:SubRowIterator() do
 			if subRow.HasRawData and subRow:HasRawData() then
 				local _, itemBuyout = subRow:GetBuyouts()
-				local quantity = select(1, subRow:GetQuantities())
 				if itemBuyout and itemBuyout > 0 then
 					if not minBuyout or itemBuyout < minBuyout then
 						minBuyout = itemBuyout
 					end
-					-- одна точка на каждый предмет в стаке (для marketValue
-					-- крупные стаки имеют больший вес — это естественно)
-					for _ = 1, (quantity or 1) do
-						prices[#prices + 1] = itemBuyout
-					end
+					-- одна точка на АУКЦИОН (как в оригинальном TSM), а не на
+					-- единицу в стаке: иначе один дешёвый стак 20 шт даёт 20
+					-- точек и полностью захватывает нижний перцентиль выборки,
+					-- отравляя marketValue
+					prices[#prices + 1] = itemBuyout
 				end
-				if quantity and quantity > 0 then
-					totalQuantity = totalQuantity + quantity
-				end
+				-- na = кол-во аукционов (лотов), а не единиц товара.
+				-- Тултип "N auctions" должен означать именно лоты.
+				auctionCount = auctionCount + 1
 			end
 		end
 		if minBuyout and minBuyout > 0 then
 			scanData[baseItemString] = {
 				mb = minBuyout,
 				mv = private.CalcMarketValue(prices) or minBuyout,
-				na = totalQuantity > 0 and totalQuantity or nil,
+				na = auctionCount > 0 and auctionCount or nil,
 			}
 			count = count + 1
 		end
@@ -645,33 +644,62 @@ function private.RecordScanResults(query)
 	end
 end
 
--- TSM 2.x lite-формула marketValue:
+-- Эталонная формула AuctionDB marketValue (TSM), одна точка = один аукцион:
 --   1. sort ascending
---   2. take cheapest 25%
---   3. price-jump cutoff: если price[i+1] > price[i]*1.2, отбросить хвост
---   4. mean остатка
+--   2. берём нижние 30% аукционов, но первые 15% ЗАЩИЩЕНЫ от jump-cutoff
+--      (иначе один дешёвый троллинг-лот с cut=1 становится всем MV)
+--   3. jump-cutoff: после защищённых 15%, если price[i] > price[i-1]*1.2,
+--      отбрасываем хвост
+--   4. mean + stddev по оставшимся, отбрасываем точки дальше 1.5σ
+--   5. mean остатка
 -- Возвращает nil если входной список пустой.
 function private.CalcMarketValue(prices)
 	local n = #prices
 	if n == 0 then return nil end
 	if n == 1 then return prices[1] end
 	table.sort(prices)
-	-- берём cheapest 25%, минимум 2 точки
-	local take = max(2, floor(n * 0.25 + 0.5))
-	if take > n then take = n end
-	-- jump cutoff
-	local cut = take
-	for i = 2, take do
-		if prices[i] > prices[i - 1] * 1.2 then
-			cut = i - 1
+	-- шаг 2-3: нижние 30% (минимум 2 точки), защита первых 15% от cutoff
+	local protectedIdx = max(2, ceil(n * 0.15))
+	local maxIdx = max(protectedIdx, ceil(n * 0.3))
+	local numKept = 0
+	for i = 1, n do
+		if i <= protectedIdx then
+			numKept = i
+		elseif i > maxIdx or prices[i] > prices[i - 1] * 1.2 then
 			break
+		else
+			numKept = i
 		end
 	end
+	-- шаг 4: фильтр стандартного отклонения (±1.5σ от среднего)
 	local sum = 0
-	for i = 1, cut do
+	for i = 1, numKept do
 		sum = sum + prices[i]
 	end
-	return floor(sum / cut + 0.5)
+	local mean = sum / numKept
+	if numKept < 3 then
+		return floor(mean + 0.5)
+	end
+	local variance = 0
+	for i = 1, numKept do
+		local d = prices[i] - mean
+		variance = variance + d * d
+	end
+	local stdDev = math.sqrt(variance / numKept)
+	local limitLo = mean - 1.5 * stdDev
+	local limitHi = mean + 1.5 * stdDev
+	-- шаг 5: среднее точек внутри 1.5σ
+	local fSum, fCnt = 0, 0
+	for i = 1, numKept do
+		if prices[i] >= limitLo and prices[i] <= limitHi then
+			fSum = fSum + prices[i]
+			fCnt = fCnt + 1
+		end
+	end
+	if fCnt == 0 then
+		return floor(mean + 0.5)
+	end
+	return floor(fSum / fCnt + 0.5)
 end
 
 function private.CheckBrowseResults()

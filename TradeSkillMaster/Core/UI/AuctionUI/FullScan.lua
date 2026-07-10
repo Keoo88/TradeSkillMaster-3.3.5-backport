@@ -800,13 +800,13 @@ function private.ProcessSingleAuction(idx)
 		return true
 	end
 
-	-- Bid-only лоты (buyout=0): не записываем цену, но считаем na
+	-- Bid-only лоты (buyout=0): не записываем цену, но считаем na (аукцион).
 	if not buyoutPrice or buyoutPrice <= 0 then
 		if private.stats then private.stats.noBuyout = private.stats.noBuyout + 1 end
 		if not private.scanData[key] then
-			private.scanData[key] = { prices = {}, na = count }
+			private.scanData[key] = { prices = {}, na = 1 }
 		else
-			private.scanData[key].na = private.scanData[key].na + count
+			private.scanData[key].na = private.scanData[key].na + 1
 		end
 		if private.processedIndices then private.processedIndices[idx] = true end
 		return true
@@ -814,14 +814,15 @@ function private.ProcessSingleAuction(idx)
 
 	local perUnit = math.floor(buyoutPrice / count)
 	if not private.scanData[key] then
-		private.scanData[key] = { mb = perUnit, prices = { perUnit }, na = count }
+		-- na = кол-во аукционов (лотов), а не единиц товара.
+		private.scanData[key] = { mb = perUnit, prices = { perUnit }, na = 1 }
 	else
 		local data = private.scanData[key]
 		if not data.mb or perUnit < data.mb then
 			data.mb = perUnit
 		end
 		table.insert(data.prices, perUnit)
-		data.na = data.na + count
+		data.na = data.na + 1
 	end
 	private.scannedItems = private.scannedItems + 1
 	if private.stats then private.stats.ok = private.stats.ok + 1 end
@@ -1003,19 +1004,55 @@ end
 -- Market Value (TSM 2.x lite)
 -- ============================================================================
 
+-- Эталонная формула AuctionDB marketValue (TSM), одна точка = один аукцион:
+--   1. sort ascending
+--   2. нижние 30% аукционов, первые 15% защищены от jump-cutoff
+--   3. jump-cutoff: после 15%, если price[i] > price[i-1]*1.2 — отброс хвоста
+--   4. фильтр ±1.5σ от среднего
+--   5. mean остатка
 function private.CalcMarketValue(prices)
-	if not prices or #prices == 0 then return nil end
-	table.sort(prices)
+	if not prices then return nil end
 	local n = #prices
+	if n == 0 then return nil end
 	if n == 1 then return prices[1] end
-	local startIdx = math.max(1, math.floor(n * 0.25))
-	local cutoffMax = prices[startIdx] * 1.20
-	local sum, cnt = 0, 0
-	for i = startIdx, n do
-		if prices[i] > cutoffMax and cnt > 0 then break end
-		sum = sum + prices[i]
-		cnt = cnt + 1
+	table.sort(prices)
+	local protectedIdx = math.max(2, math.ceil(n * 0.15))
+	local maxIdx = math.max(protectedIdx, math.ceil(n * 0.3))
+	local numKept = 0
+	for i = 1, n do
+		if i <= protectedIdx then
+			numKept = i
+		elseif i > maxIdx or prices[i] > prices[i - 1] * 1.2 then
+			break
+		else
+			numKept = i
+		end
 	end
-	if cnt == 0 then return prices[1] end
-	return math.floor(sum / cnt)
+	local sum = 0
+	for i = 1, numKept do
+		sum = sum + prices[i]
+	end
+	local mean = sum / numKept
+	if numKept < 3 then
+		return math.floor(mean + 0.5)
+	end
+	local variance = 0
+	for i = 1, numKept do
+		local d = prices[i] - mean
+		variance = variance + d * d
+	end
+	local stdDev = math.sqrt(variance / numKept)
+	local limitLo = mean - 1.5 * stdDev
+	local limitHi = mean + 1.5 * stdDev
+	local fSum, fCnt = 0, 0
+	for i = 1, numKept do
+		if prices[i] >= limitLo and prices[i] <= limitHi then
+			fSum = fSum + prices[i]
+			fCnt = fCnt + 1
+		end
+	end
+	if fCnt == 0 then
+		return math.floor(mean + 0.5)
+	end
+	return math.floor(fSum / fCnt + 0.5)
 end
