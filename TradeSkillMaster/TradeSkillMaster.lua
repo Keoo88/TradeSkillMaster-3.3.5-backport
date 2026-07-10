@@ -270,10 +270,15 @@ function TSM.OnInitialize(settingsDB)
 			else
 				value = TSM.AuctionDB.GetRealmItemData(itemString, key)
 			end
-			-- 3.3.5 fallback: если marketValue/regionMarketValue нет (нет TSM App), используем minBuyout из локальных сканов
-			if not value and (key == "marketValue" or key == "regionMarketValue") then
-				value = TSM.AuctionDB.GetRealmItemData(itemString, "minBuyout")
+			-- 3.3.5: region-данных нет (нет TSM App) — DBRegionMarketAvg отвечает
+			-- локальным marketValue, чтобы дефолтные операции не ломались
+			if not value and key == "regionMarketValue" then
+				value = TSM.AuctionDB.GetRealmItemData(itemString, "marketValue")
 			end
+			-- ВАЖНО: fallback на minBuyout убран намеренно. DBMarket — сглаженная
+			-- устойчивая цена; молчаливая подмена на minBuyout (самую манипулируемую
+			-- цену) превращала операции вида 0.5*dbmarket в 0.5*minBuyout и
+			-- провоцировала гонку на дно для несканированных предметов.
 			-- 3.3.5 финальный fallback: если нет auction data вообще, используем vendorsell * 2
 			if not value and (key == "marketValue" or key == "regionMarketValue") then
 				local vendorSell = ItemInfo.GetVendorSell(itemString)
