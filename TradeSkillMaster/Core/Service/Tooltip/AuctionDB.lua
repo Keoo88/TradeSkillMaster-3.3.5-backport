@@ -57,14 +57,16 @@ function AuctionDB.OnEnable()
 	private.AddTooltipInfo(tooltipInfo, REALM_INFO)
 	if ClientInfo.IsRetail() then
 		private.AddTooltipInfo(tooltipInfo, ALT_REALM_INFO)
+		-- 3.3.5: нет TSM App → нет region-данных. Не регистрируем REGION_INFO
+		-- чтобы не засорять настройки тултипа мёртвыми строками "[---]".
+		private.AddTooltipInfo(tooltipInfo, REGION_INFO)
 	end
-	private.AddTooltipInfo(tooltipInfo, REGION_INFO)
 	TSM.Tooltip.Register(tooltipInfo)
 	private.SetDefaultTrendValues(REALM_INFO)
 	if ClientInfo.IsRetail() then
 		private.SetDefaultTrendValues(ALT_REALM_INFO)
+		private.SetDefaultTrendValues(REGION_INFO)
 	end
-	private.SetDefaultTrendValues(REGION_INFO)
 end
 
 
@@ -166,12 +168,16 @@ function private.PopulateRightText(tooltip, itemString)
 		lastScan = time() - 120
 		numAuctions = 5
 	else
-		lastScan = TSM.AuctionDB.GetAppDataUpdateTimes()
-		-- 3.3.5: без TSM App время данных реалма = 0, и заголовок всегда читал бы
-		-- "Not Scanned" даже сразу после локального browse-скана. Берём время
-		-- локального скана как fallback, чтобы заголовок отражал локальные данные.
-		if (not lastScan or lastScan == 0) and TSM.AuctionDB.GetLocalScanTime then
-			lastScan = TSM.AuctionDB.GetLocalScanTime()
+		-- 3.3.5: предпочитаем per-item время скана (index 6 в holder, ключ
+		-- "lastScan") — показывает когда именно ЭТОТ предмет был последний раз
+		-- в скане, а не глобальное время последнего скана реалма.
+		lastScan = TSM.AuctionDB.GetRealmItemData(itemString, "lastScan")
+		if not lastScan or lastScan == 0 then
+			-- fallback: глобальное время последнего App-апдейта или локального скана
+			lastScan = TSM.AuctionDB.GetAppDataUpdateTimes()
+			if (not lastScan or lastScan == 0) and TSM.AuctionDB.GetLocalScanTime then
+				lastScan = TSM.AuctionDB.GetLocalScanTime()
+			end
 		end
 		numAuctions = TSM.AuctionDB.GetRealmItemData(itemString, "numAuctions") or 0
 	end
