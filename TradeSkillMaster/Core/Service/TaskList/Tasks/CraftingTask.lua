@@ -51,7 +51,12 @@ function CraftingTask.__init(self)
 		Event.Register("CHAT_MSG_LOOT", private.ChatMsgLootEventHandler)
 		Event.Register("UNIT_SPELLCAST_INTERRUPTED", private.SpellCastEventHandler)
 		Event.Register("UNIT_SPELLCAST_FAILED", private.SpellCastEventHandler)
-		Event.Register("UNIT_SPELLCAST_FAILED_QUIET", private.SpellCastEventHandler)
+		-- 3.3.5 fix (зеркально Destroying/Core.lua): UNIT_SPELLCAST_FAILED_QUIET
+		-- добавлен в MoP — регистрация неизвестного события на 3.3.5a даёт Lua
+		-- error; UNIT_SPELLCAST_FAILED и так покрывает отказы
+		if not ClientInfo.IsVanillaClassic() and not ClientInfo.IsBCClassic() and not ClientInfo.IsWrathClassic() then
+			Event.Register("UNIT_SPELLCAST_FAILED_QUIET", private.SpellCastEventHandler)
+		end
 	end
 end
 

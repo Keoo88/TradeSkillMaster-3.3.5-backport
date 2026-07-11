@@ -87,7 +87,11 @@ function private.PopulateTasks()
 
 		local expiration = (v - time()) / 24 / 60 / 60
 		if expiration <= DAYS_LEFT_LIMIT * -1 then
-			private.settings.expiringMail[PLAYER_NAME] = nil
+			-- Fix (унаследованный баг апстрима): удаляем запись ИТЕРИРУЕМОГО
+			-- персонажа (k), а не текущего (PLAYER_NAME) — иначе истёкшие
+			-- записи альтов висели вечно, а запись текущего персонажа
+			-- удалялась ошибочно
+			private.settings.expiringMail[k] = nil
 		else
 			if not task:HasCharacter(k) and expiration <= DAYS_LEFT_LIMIT then
 				task:AddCharacter(k, expiration)
@@ -143,8 +147,12 @@ function private.PopulateTasks()
 
 	TSM.TaskList.OnTaskUpdated()
 
-	if minPendingCooldown ~= math.huge and minPendingCooldown < DAYS_LEFT_LIMIT then
-		private.updateTimer:RunForTime(minPendingCooldown)
+	-- Fix: minPendingCooldown в СЕКУНДАХ, а DAYS_LEFT_LIMIT в днях — старое
+	-- сравнение было истинно только при < 1 секунды до истечения, и таймер
+	-- обновления фактически никогда не взводился (задача "почта истекает"
+	-- не появлялась в момент пересечения порога)
+	if minPendingCooldown ~= math.huge and minPendingCooldown < DAYS_LEFT_LIMIT * 24 * 60 * 60 then
+		private.updateTimer:RunForTime(max(minPendingCooldown, 1))
 	else
 		private.updateTimer:Cancel()
 	end
@@ -152,6 +160,14 @@ end
 
 function private.RemoveMailTask(task)
 	assert(Table.RemoveByValue(private.activeTasks, task) == 1)
+	-- Fix: чистим карту задач (зеркально Cooldowns.RemoveTask) — иначе
+	-- следующий PopulateTasks брал из карты уже переработанный объект,
+	-- который пул мог выдать другому потребителю (порча состояния)
+	for key, mapTask in pairs(private.expiringMailTasks) do
+		if mapTask == task then
+			private.expiringMailTasks[key] = nil
+		end
+	end
 	task:Release()
 	private.mailTaskPool:Recycle(task)
 	TSM.TaskList.OnTaskUpdated()
@@ -159,6 +175,12 @@ end
 
 function private.RemoveAuctionTask(task)
 	assert(Table.RemoveByValue(private.activeTasks, task) == 1)
+	-- Fix: см. комментарий в RemoveMailTask
+	for key, mapTask in pairs(private.expiredAuctionTasks) do
+		if mapTask == task then
+			private.expiredAuctionTasks[key] = nil
+		end
+	end
 	task:Release()
 	private.auctionTaskPool:Recycle(task)
 	TSM.TaskList.OnTaskUpdated()

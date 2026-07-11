@@ -106,18 +106,25 @@ function private.PopulateTasks()
 		end
 		if sourceInfo.craftProfit or sourceInfo.craftNoProfit then
 			local craftString = TSM.Crafting.GetMostProfitableCraftStringByItem(itemString, private.settings.crafter)
-			assert(craftString)
-			local profession = TSM.Crafting.GetProfession(craftString)
-			if not private.professionTasks[profession] then
-				private.professionTasks[profession] = TSM.TaskList.CraftingTask()
-				private.professionTasks[profession]:Acquire(private.SourceProfessionTaskDone, L["Gathering"], profession)
+			-- 3.3.5 fix: рецепт мог ещё не импортироваться (недозагруженные
+			-- Crafting-данные на backport'е) — пропускаем крафт-источник
+			-- вместо обрыва построения всех задач сбора assert'ом
+			if craftString then
+				local profession = TSM.Crafting.GetProfession(craftString)
+				if not private.professionTasks[profession] then
+					private.professionTasks[profession] = TSM.TaskList.CraftingTask()
+					private.professionTasks[profession]:Acquire(private.SourceProfessionTaskDone, L["Gathering"], profession)
+				end
+				private.professionTasks[profession]:AddCraftString(craftString, sourceInfo.craftProfit or sourceInfo.craftNoProfit)
 			end
-			private.professionTasks[profession]:AddCraftString(craftString, sourceInfo.craftProfit or sourceInfo.craftNoProfit)
 			sourceInfo.craftProfit = nil
 			sourceInfo.craftNoProfit = nil
 		end
-		-- make sure we processed everything from the sourceInfo table
-		assert(not next(sourceInfo))
+		-- 3.3.5 fix: неизвестный источник в sourcesStr (например, из будущей
+		-- версии данных) не должен ронять весь модуль — чистим и продолжаем
+		if next(sourceInfo) then
+			wipe(sourceInfo)
+		end
 	end
 	TempTable.Release(sourceInfo)
 
