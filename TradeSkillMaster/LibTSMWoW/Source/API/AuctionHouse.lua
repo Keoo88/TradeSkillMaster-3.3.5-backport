@@ -191,7 +191,13 @@ function AuctionHouse.GetOwnedInfo(index)
 			-- Sometimes wow doesn't tell us the current bid on sold auctions
 			currentBid = 0
 		end
-		duration = time() + duration
+		-- 3.3.5 fix: on classic, GetAuctionItemTimeLeft returns an enum code (1-4),
+		-- not seconds. Converting it via time() + duration would mix unix timestamps
+		-- with enum codes in the same "duration" field. Only convert when the retail
+		-- API (which returns timeLeftSeconds) is in use — same gating as saleStatus 0.
+		if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+			duration = time() + duration
+		end
 	else
 		error("Invalid sale status: "..tostring(saleStatus))
 	end
@@ -395,9 +401,10 @@ end
 ---@return boolean? isHighBidder
 function AuctionHouse.GetBrowseResult(index)
 	assert(not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE))
-	-- WotLK 3.3.5 GetAuctionItemInfo signature (15 returns, NO levelColHeader):
-	-- name, texture, count, quality, canUse, level, minBid, minIncrement, buyoutPrice, bidAmount, highBidder, owner, saleStatus, itemId, hasAllInfo
-	local rawName, texture, stackSize, quality, canUse, level, minBid, minIncrement, buyout, bid, isHighBidder, seller, saleStatus, itemId, hasAllInfo = GetAuctionItemInfo("list", index)
+	-- WotLK 3.3.5 GetAuctionItemInfo signature (13 returns, NO levelColHeader,
+	-- NO itemId/hasAllInfo — those were added in later clients and are nil on 3.3.5):
+	-- name, texture, count, quality, canUse, level, minBid, minIncrement, buyoutPrice, bidAmount, highBidder, owner, saleStatus
+	local rawName, _, stackSize, _, _, _, minBid, minIncrement, buyout, bid, isHighBidder, seller = GetAuctionItemInfo("list", index)
 	minIncrement = isHighBidder and 0 or minIncrement
 	local itemLink = GetAuctionItemLink("list", index)
 	local timeLeft = GetAuctionItemTimeLeft("list", index)
