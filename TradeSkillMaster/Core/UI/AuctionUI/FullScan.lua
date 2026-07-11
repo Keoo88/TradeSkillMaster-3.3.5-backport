@@ -47,6 +47,14 @@ local RETRY_DELAY = 3 -- seconds between retry passes (getAll mode)
 local MAX_LINK_RESOLVE_PASSES = 2 -- локальных проходов по missing-линкам на страницу
 local LINK_RESOLVE_DELAY = 0.25 -- пауза, чтобы in-flight item-info ответы успели дойти
 local MIN_MISSING_FOR_RETRY = 15 -- добор включаем только если потеряли ≥30% страницы
+-- Real echo (DUP): сервер вернул буфер предыдущей страницы. Обрабатывать его нельзя —
+-- предыдущая страница посчитается дважды, а реальная будет пропущена. Повторяем запрос
+-- той же страницы (с лимитом, чтобы не зациклиться на постоянно echo-ящем сервере).
+local MAX_DUP_REQUERIES = 3 -- повторов той же страницы при real echo
+local DUP_REQUERY_DELAY = 0.5 -- пауза перед повтором echo-страницы
+-- Транзиентный пустой батч в середине скана: не считаем концом АХ, повторяем страницу.
+local MAX_EMPTY_PAGE_RETRIES = 2 -- повторов пустой страницы до принудительного финиша
+local EMPTY_PAGE_RETRY_DELAY = 1 -- пауза перед повтором пустой страницы
 local DEBUG_LOG_EVERY_N_PAGES = 0 -- частота snapshot-сообщений в чат
 local DEBUG_LOG_RETRIES = false -- логировать каждый page retry в чат
 
@@ -420,7 +428,7 @@ function private.TryStealthGetAll()
     -- then fall through to paged scan.
     C_Timer.After(STEALTH_GETALL_TIMEOUT, function()
         if private.stealthGetAllActive and private.stealthGetAllToken == myToken then
-            ChatMessage.PrintfUser("|cffffaa00[FullScan]|r stealth getAll ignored by server â falling back to paged scan")
+            ChatMessage.PrintfUser("|cffffaa00[FullScan]|r stealth getAll ignored by server - falling back to paged scan")
             private.UnregisterStealthGetAll()
             -- Brief pause to let client-side query state reset after the ignored getAll.
             -- Without this, the first bypass probe often echoes stale data (DUP false positive).
@@ -502,6 +510,7 @@ function private.StartPagedScanImpl()
 	private.processedIndices = {}
 	private.missingIndices = nil -- paged mode не использует global missing
 	private.pageRetries = {}
+	private.emptyPageRetries = {} -- map: page -> retryCount (пустые батчи в середине скана)
 	private.pageMissingList = nil
 	private.lastFirstLink, private.lastLastLink, private.lastSigBatch, private.lastMidLink = nil, nil, nil, nil -- dup-detector
 	private.bypassDisabled = false -- авто-отключится при первом DUP-от-bypass
@@ -609,13 +618,56 @@ function private.OnPagedResult()
 		-- 	private.currentPage + 1, private.totalPages > 0 and private.totalPages or 0,
 		-- 	totalPageTime, throttleWait, serverTime, numBatch or 0, modeTag, dupTag))
 
-		-- bypass-метод удалён: echo-обработка (server dropped probe) убрана.
-		if not isDup or serverTime >= 0.03 then
+		-- Real echo (сервер вернул буфер предыдущей страницы): НЕ обрабатываем его —
+		-- иначе аукционы предыдущей страницы посчитаются дважды (искажение marketValue),
+		-- а реальная страница будет пропущена целиком. Повторяем запрос той же страницы.
+		if isDup and serverTime < 0.03 then
+			private.consecutiveDups = (private.consecutiveDups or 0) + 1
+			if private.consecutiveDups <= MAX_DUP_REQUERIES then
+				local pageAtDup = private.currentPage
+				C_Timer.After(DUP_REQUERY_DELAY, function()
+					if private.scanState == "paged" and private.currentPage == pageAtDup then
+						private.QueryNextPage()
+					end
+				end)
+				return
+			end
+			-- Лимит повторов исчерпан — обрабатываем как есть, чтобы скан не завис
+			-- (возможен двойной учёт этой страницы, но это лучше вечного цикла).
+			ChatMessage.PrintfUser(string.format(
+				"|cffffaa00[FullScan]|r page %d echoed %d times in a row - processing as-is",
+				private.currentPage + 1, private.consecutiveDups))
+			private.consecutiveDups = 0
+		else
 			private.consecutiveDups = 0
 		end
 		-- Update page fingerprint AFTER DUP check (only for clean pages)
 		private.lastFirstLink, private.lastLastLink, private.lastSigBatch, private.lastMidLink =
 			firstLink, lastLink, numBatch, midLink
+
+		-- Транзиентный пустой батч в середине скана (сервер иногда отдаёт пустой ответ
+		-- под нагрузкой): НЕ считаем это концом АХ — повторяем страницу с лимитом.
+		-- Без этого частичный скан записывался в AuctionDB как завершённый.
+		if (not numBatch or numBatch == 0)
+			and private.totalPages > 0
+			and private.currentPage < private.totalPages - 1
+		then
+			private.emptyPageRetries = private.emptyPageRetries or {}
+			local emptyRetries = private.emptyPageRetries[private.currentPage] or 0
+			if emptyRetries < MAX_EMPTY_PAGE_RETRIES then
+				private.emptyPageRetries[private.currentPage] = emptyRetries + 1
+				local pageAtEmpty = private.currentPage
+				C_Timer.After(EMPTY_PAGE_RETRY_DELAY, function()
+					if private.scanState == "paged" and private.currentPage == pageAtEmpty then
+						private.QueryNextPage()
+					end
+				end)
+				return
+			end
+			ChatMessage.PrintfUser(string.format(
+				"|cffffaa00[FullScan]|r page %d returned empty %d times - finishing scan early",
+				private.currentPage + 1, emptyRetries + 1))
+		end
 
 		private.pageMissingList = private.pageMissingList or {}
 		for k in pairs(private.pageMissingList) do private.pageMissingList[k] = nil end
@@ -629,7 +681,7 @@ function private.OnPagedResult()
 		-- will return the link once the item-info response arrives.
 		local passesSoFar = private.pageRetries[private.currentPage] or 0
 		if numBatch and numBatch > 0
-			and pageMissing > MIN_MISSING_FOR_RETRY
+			and pageMissing >= MIN_MISSING_FOR_RETRY
 			and passesSoFar < MAX_LINK_RESOLVE_PASSES
 		then
 			private.curNumBatch = numBatch
@@ -692,7 +744,7 @@ function private.ResolvePageMissing()
 
 	local pageMissing = #stillMissing
 	local passesSoFar = private.pageRetries[private.currentPage] or 0
-	if pageMissing > MIN_MISSING_FOR_RETRY and passesSoFar < MAX_LINK_RESOLVE_PASSES then
+	if pageMissing >= MIN_MISSING_FOR_RETRY and passesSoFar < MAX_LINK_RESOLVE_PASSES then
 		private.ScheduleLinkResolve(0, pageMissing)
 	else
 		private.AdvanceToNextPage(private.curNumBatch or PAGE_SIZE)
@@ -746,7 +798,7 @@ function private.AdvanceToNextPage(numBatch)
 	end
 end
 
--- ��озвращает: pageOk, pageMissing. missingOut (опц.) — массив, в который складываются
+-- Возвращает: pageOk, pageMissing. missingOut (опц.) — массив, в который складываются
 -- индексы с nil-линком (для локального добора без re-query).
 function private.ProcessPageAuctions(count, missingOut)
 	local pageOk, pageMissing = 0, 0
