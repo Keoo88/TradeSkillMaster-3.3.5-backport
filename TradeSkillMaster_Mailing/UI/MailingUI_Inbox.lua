@@ -8,7 +8,6 @@ local TSM = _G.TSMAddon ---@type TSM
 local Inbox = TSM.UI.MailingUI:NewPackage("Inbox") ---@type AddonPackage
 local ClientInfo = TSM.LibTSMWoW:Include("Util.ClientInfo")
 local L = TSM.Locale.GetTable()
-local DelayTimer = TSM.LibTSMWoW:IncludeClassType("DelayTimer")
 local Event = TSM.LibTSMWoW:Include("Service.Event")
 local SoundAlert = TSM.LibTSMWoW:Include("UI.SoundAlert")
 local Money = TSM.LibTSMUtil:Include("UI.Money")
@@ -30,9 +29,10 @@ local private = {
 	inboxQueryCancellable = nil,
 	itemsQuery = nil,
 	selectedMail = nil,
-	nextUpdate = nil,
 	filterText = "",
-	updateCounterTimer = nil,
+	countdownStart = nil,
+	inboxInitDone = false,
+	lastTickTime = nil,
 }
 local PLAYER_NAME = UnitName("player")
 local MAIL_REFRESH_TIME = ClientInfo.IsRetail() and 15 or 60
@@ -47,7 +47,6 @@ function Inbox.OnInitialize(settingsDB)
 	private.settings = settingsDB:NewView()
 		:AddKey("global", "mailingUIContext", "mailsScrollingTable")
 		:AddKey("global", "mailingOptions", "openMailSound")
-	private.updateCounterTimer = DelayTimer.New("INBOX_UPDATE_COUNTER", private.UpdateCountDown)
 	private.FSMCreate()
 	TSM.UI.MailingUI.RegisterTopLevelPage(INBOX, private.GetInboxFrame)
 	-- 3.3.5: fallback подписка на конец mail-скана через прямой callback
@@ -60,6 +59,12 @@ function Inbox.IsMailOpened()
 	end
 
 	return private.view:GetElement("view"):GetPath() == "items"
+end
+
+-- 3.3.5: сервис (Open.WaitForInboxRefresh) зовёт это в момент старта реального окна рефреша,
+-- чтобы счётчик «Reload UI (NN)» начал отсчёт заново синхронно с ожиданием следующей пачки писем.
+function Inbox.ResetRefreshCountdown()
+	private.countdownStart = GetTime()
 end
 
 
@@ -317,6 +322,7 @@ function private.GetInboxMailsFrame()
 
 	private.frameWasShown = false
 	private.frame = frame
+	private.inboxInitDone = false
 
 	return frame
 end
@@ -721,11 +727,23 @@ end
 -- Local Script Handlers
 -- ============================================================================
 
+-- 3.3.5: ПОСТОЯННЫЙ OnUpdate (скрипт больше не снимаем): видимый на экране фрейм гарантированно
+-- получает OnUpdate каждый кадр, поэтому счётчик «Reload UI (NN)» тикает без DelayTimer и без
+-- зависимости от почтовых событий/сканов (все три предыдущих варианта на них залипали на 60).
 function private.InboxFrameOnUpdate(frame)
-	frame:SetScript("OnUpdate", nil)
-	private.UpdateCountDown(true)
-	private.updateCounterTimer:RunForTime(0)
-	private.fsm:ProcessEvent("EV_FRAME_SHOW", frame, private.filterText)
+	if not private.inboxInitDone then
+		-- Одноразовая инициализация на каждый показ фрейма (прежняя работа one-shot обработчика).
+		private.inboxInitDone = true
+		private.countdownStart = GetTime()
+		private.lastTickTime = GetTime()
+		private.UpdateCountDown(frame)
+		private.fsm:ProcessEvent("EV_FRAME_SHOW", frame, private.filterText)
+		return
+	end
+	if GetTime() - (private.lastTickTime or 0) >= 1 then
+		private.lastTickTime = GetTime()
+		private.UpdateCountDown(frame)
+	end
 end
 
 function private.InboxFrameOnHide(frame)
@@ -737,6 +755,7 @@ function private.InboxFrameOnHide(frame)
 	end
 	private.frame = nil
 	private.frameWasShown = false
+	private.inboxInitDone = false
 	if private.inboxQueryCancellable then
 		private.inboxQueryCancellable:Cancel()
 		private.inboxQueryCancellable = nil
@@ -761,6 +780,9 @@ end
 -- он гарантированно вызывается в конце каждого скана. FSM сам пропустит
 -- EV_MAIL_DATA_UPDATED если не в ST_SHOWN.
 function private.InboxOnMailScanComplete()
+	-- 3.3.5: НЕ пересбрасываем здесь countdownStart — mailCallbacks стреляют на КАЖДОМ скане
+	-- (Scanner.lua), а MAIL_INBOX_UPDATE сервер может слать очень часто; пересев на каждом скане
+	-- держал счётчик на 60 постоянно. Сброс делает только Open.WaitForInboxRefresh (реальное окно).
 	private.fsm:ProcessEvent("EV_MAIL_DATA_UPDATED", private.filterText or "")
 end
 
@@ -807,24 +829,26 @@ end
 -- Private Helper Functions
 -- ============================================================================
 
-function private.UpdateCountDown(force)
-	if not force then
-		private.updateCounterTimer:RunForTime(1)
-	end
-	if not private.frame then
+-- 3.3.5: рисуем по фрейму, переданному из OnUpdate (он гарантированно валиден — это тот же элемент,
+-- что UpdateText использует через context.frame), а НЕ по private.frame: private.frame бывает nil
+-- (InboxFrameOnShow после спорадического OnHide не восстанавливает его), из-за чего счётчик всегда
+-- упирался в ранний выход и стоял на 60. Считаем от монотонного GetTime-якоря, зацикливаем на нуле.
+function private.UpdateCountDown(frame)
+	if not frame then
 		return
 	end
 
-	local nextUpdate = MAIL_REFRESH_TIME - (time() - TSM.Mailing.Open.GetLastCheckTime())
-	if nextUpdate <= 0 then
-		nextUpdate = MAIL_REFRESH_TIME
+	if not private.countdownStart then
+		private.countdownStart = GetTime()
+	end
+	local remaining = MAIL_REFRESH_TIME - (GetTime() - private.countdownStart)
+	if remaining <= 0 then
+		private.countdownStart = GetTime()
+		remaining = MAIL_REFRESH_TIME
 	end
 
-	if nextUpdate ~= private.nextUpdate or force then
-		private.frame:GetElement("top.reload"):SetFormattedText(L["Reload UI (%02d)"], Math.Round(nextUpdate))
-			:Draw()
-		private.nextUpdate = nextUpdate
-	end
+	frame:GetElement("top.reload"):SetFormattedText(L["Reload UI (%02d)"], Math.Round(remaining))
+		:Draw()
 end
 
 
@@ -959,7 +983,6 @@ function private.FSMCreate()
 		:AddState(FSM.NewState("ST_HIDDEN")
 			:SetOnEnter(function(context)
 				TSM.Mailing.Open.KillThread()
-				private.updateCounterTimer:Cancel()
 				context.frame = nil
 			end)
 			:AddTransition("ST_SHOWN")
