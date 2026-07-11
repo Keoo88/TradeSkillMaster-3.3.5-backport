@@ -676,7 +676,10 @@ function private.ScanProfession()
 		private.matDB:BulkInsertEnd()
 		private.db:BulkInsertEnd()
 		private.dbPopulated = true
-		if next(inactiveCraftStrings) then
+		-- 3.3.5 backport fix: the hook funcs are registered by the OPTIONAL
+		-- TradeSkillMaster_Crafting addon. If it's disabled or not installed,
+		-- inactiveFunc is nil - skip the call instead of crashing.
+		if next(inactiveCraftStrings) and private.inactiveFunc then
 			private.inactiveFunc(inactiveCraftStrings)
 		end
 		TempTable.Release(inactiveCraftStrings)
@@ -773,7 +776,16 @@ function private.ScanProfession()
 			categorySkillLevelLookup[craftString] = TradeSkill.GetCurrentCategorySkillLevel(categoryId)
 		end
 	end
-	local done, rescan = private.scanHookFunc(professionName, craftStrings, categorySkillLevelLookup)
+	-- 3.3.5 backport fix: the scan hook is registered by the OPTIONAL
+	-- TradeSkillMaster_Crafting addon (see its .toc: "Disable it in the AddOns
+	-- list to free its memory"). If Crafting is disabled or not installed,
+	-- scanHookFunc is nil. In that case, skip the hook and consider the scan
+	-- done: the scanner's own DB is already populated above, which is all the
+	-- core (tooltips, etc.) needs without the Crafting module.
+	local done, rescan = true, false
+	if private.scanHookFunc then
+		done, rescan = private.scanHookFunc(professionName, craftStrings, categorySkillLevelLookup)
+	end
 	TempTable.Release(craftStrings)
 	TempTable.Release(categorySkillLevelLookup)
 	if rescan then
