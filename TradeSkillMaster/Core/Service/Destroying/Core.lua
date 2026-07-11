@@ -26,7 +26,9 @@ local ItemInfo = TSM.LibTSMService:Include("Item.ItemInfo")
 local CustomString = TSM.LibTSMTypes:Include("CustomString")
 local Conversions = TSM.LibTSMApp:Include("Service.Conversions")
 local BagTracking = TSM.LibTSMService:Include("Inventory.BagTracking")
+local DelayTimer = TSM.LibTSMWoW:IncludeClassType("DelayTimer")
 local private = {
+	bagUpdateTimer = nil,
 	combineThread = nil,
 	destroyThread = nil,
 	destroyThreadRunning = false,
@@ -83,7 +85,15 @@ function Destroying.OnInitialize(settingsDB)
 	Threading.SetCallback(private.combineThread, private.CombineThreadDone)
 	private.destroyThread = Threading.New("DESTROY", private.DestroyThread)
 	Threading.SetCallback(private.destroyThread, private.DestroyThreadDone)
-	BagTracking.RegisterCallback(private.UpdateBagDB)
+	-- 3.3.5 perf: дебаунс полной пересборки destroyInfoDB. BAG_UPDATE при фарме
+	-- сыплется очередями (лут нескольких предметов, крафт, почта) — каждая
+	-- пересборка это Truncate + полный проход сумок с CustomString-вычислениями.
+	-- Коалесцируем всплеск в один пересчёт через 0.3с после первого события
+	-- (повторные RunForTime при уже запущенном таймере игнорируются).
+	private.bagUpdateTimer = DelayTimer.New("DESTROYING_BAG_UPDATE", private.UpdateBagDB)
+	BagTracking.RegisterCallback(function()
+		private.bagUpdateTimer:RunForTime(0.3)
+	end)
 
 	private.settings = settingsDB:NewView()
 		:AddKey("global", "internalData", "destroyingHistory")
@@ -565,8 +575,14 @@ function private.UpdateBagDB()
 	elseif ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic() then
 		local disenchantName = Spell.GetInfo(7411)
 		local jewelcraftName = Spell.GetInfo(28897)
+		-- 3.3.5 fix: инскрипция существует на Wrath (это Wrath-профессия!), но
+		-- inscriptionSkillLevel заполнялся только в Panda-ветке — из-за этого
+		-- IsDestroyable отбрасывал ВСЕ травы с требованием скилла и Milling
+		-- фактически не работал
+		local inscriptionName = Spell.GetInfo(45357)
 		private.disenchantSkillLevel = TSM.Crafting.PlayerProfessions.GetProfessionSkill(UnitName("player"), disenchantName)
 		private.jewelcraftSkillLevel = TSM.Crafting.PlayerProfessions.GetProfessionSkill(UnitName("player"), jewelcraftName)
+		private.inscriptionSkillLevel = TSM.Crafting.PlayerProfessions.GetProfessionSkill(UnitName("player"), inscriptionName)
 	end
 	end
 	for _, slotId, itemString, quantity in query:Iterator() do
@@ -618,13 +634,24 @@ function private.ProcessBagItem(itemString)
 end
 
 function private.IsDestroyable(itemString)
-	if private.destroyQuantityCache[itemString] then
+	-- 3.3.5 perf: кэшируются и негативные результаты (canDestroyCache == false
+	-- при destroyQuantityCache == nil) — раньше каждый BAG_UPDATE прогонял все
+	-- неразрушаемые предметы (большинство сумки!) через полный IsDestroyable
+	-- с итераторами конверсий. Кэш инвалидируется по SKILL_LINES_CHANGED.
+	if private.canDestroyCache[itemString] ~= nil then
 		return private.canDestroyCache[itemString], private.destroyQuantityCache[itemString]
 	end
 
-	-- Disenchanting
+	-- 3.3.5 fix: если item-данные ещё не загружены (nil quality/classId у
+	-- свежезалутанного предмета), НЕ кэшируем результат — иначе предмет
+	-- навсегда пометится неразрушаемым; и не падаем на quality <= maxQuality
 	local quality = ItemInfo.GetQuality(itemString)
-	if ItemInfo.IsDisenchantable(itemString) and quality <= private.settings.deMaxQuality then
+	if quality == nil and ItemInfo.GetClassId(itemString) == nil then
+		return nil, nil
+	end
+
+	-- Disenchanting
+	if quality and ItemInfo.IsDisenchantable(itemString) and quality <= private.settings.deMaxQuality then
 		local hasSourceItem = true
 		if ClientInfo.IsPandaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic() then
 			local classId = ItemInfo.GetClassId(itemString)
@@ -642,6 +669,9 @@ function private.IsDestroyable(itemString)
 			private.destroyQuantityCache[itemString] = 1
 			return private.canDestroyCache[itemString], private.destroyQuantityCache[itemString]
 		end
+		-- Кэшируем негативный результат (нет подходящей конверсии по скиллу)
+		private.canDestroyCache[itemString] = false
+		private.destroyQuantityCache[itemString] = nil
 		return private.canDestroyCache[itemString], private.destroyQuantityCache[itemString]
 	end
 
@@ -673,6 +703,9 @@ function private.IsDestroyable(itemString)
 		return private.canDestroyCache[itemString], private.destroyQuantityCache[itemString]
 	end
 
+	-- Кэшируем негативный результат (нет подходящей конверсии по скиллу)
+	private.canDestroyCache[itemString] = false
+	private.destroyQuantityCache[itemString] = nil
 	return private.canDestroyCache[itemString], private.destroyQuantityCache[itemString]
 end
 
