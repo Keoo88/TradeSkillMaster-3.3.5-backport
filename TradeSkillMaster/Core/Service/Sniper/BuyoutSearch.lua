@@ -19,6 +19,7 @@ local private = {
 	settings = nil,
 	scanThreadId = nil,
 	searchContext = nil,
+	legacyQuery = nil,
 }
 local RESCAN_DELAY = (ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic()) and 5 or 30
 
@@ -47,7 +48,8 @@ end
 
 ---@param auctionScan AuctionScanManager
 function private.ScanThread(auctionScan)
-	-- print("TSM:SniperDebug ScanThread started")
+	-- Сбрасываем ссылку с прошлого запуска — query мог быть освобождён в пул
+	private.legacyQuery = nil
 	local numQueries = auctionScan:GetNumQueries()
 		if numQueries == 0 then
 			-- Prefer per-item exact-name queries when we have a list of items to
@@ -69,20 +71,30 @@ function private.ScanThread(auctionScan)
 				local query = auctionScan:NewQuery()
 					:AddCustomFilter(private.QueryFilter)
 				if ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic() then
+					-- Страница задаётся всегда — она используется, когда getAll
+					-- недоступен (см. переключение в цикле пересканов ниже)
+					query:SetPage("LAST")
 					if USE_GET_ALL and AuctionHouse.CanSendGetAllQuery() then
 						query:SetUseGetAll(true)
-					else
-						query:SetPage("LAST")
 					end
 					-- 3.3.5: keep found lots in the list across rescans; the list is cleared
 					-- only when the scan is stopped/restarted (the query is released then)
 					query:SetAccumulate(true)
+					private.legacyQuery = query
 				end
 			end
 	end
 	auctionScan:SetScript("OnQueryDone", private.OnQueryDone)
 	-- Just constantly rerun the scan until the thread is killed (don't care if it fails)
 	while true do
+		-- 3.3.5 fix: доступность getAll перепроверяется ПЕРЕД КАЖДЫМ пересканом,
+		-- а не один раз при создании query. На ядрах с честным ~15-мин КД getAll
+		-- второй и последующие пересканы молча игнорировались сервером и снайпер
+		-- зависал в retry-цикле. Теперь на время КД скан работает постранично
+		-- (last page), а когда getAll снова доступен — возвращается к нему.
+		if private.legacyQuery then
+			private.legacyQuery:SetUseGetAll(USE_GET_ALL and AuctionHouse.CanSendGetAllQuery() or false)
+		end
 		auctionScan:ScanQueriesThreaded()
 		auctionScan:SleepThreaded(RESCAN_DELAY)
 	end
@@ -111,15 +123,6 @@ function private.QueryFilter(_, subRow, isSubRow, itemKey)
 	local maxPrice = itemString and SniperOperation.GetMaxPrice(itemString) or nil
 	if not maxPrice and baseItemString and baseItemString ~= itemString then
 		maxPrice = SniperOperation.GetMaxPrice(baseItemString)
-	end
-
-	local herbName = itemString and ItemInfo.GetName(itemString) or baseItemString and ItemInfo.GetName(baseItemString)
-	if herbName and strlower(herbName) == "личецвет" then
-		-- local _, herbItemBuyout, herbMinItemBuyout = subRow:GetBuyouts()
-		-- print(string.format(
-		-- 	"TSM:SniperDebug item=%s itemString=%s base=%s buyout=%s maxPrice=%s",
-		-- 	tostring(herbName), tostring(itemString), tostring(baseItemString), tostring(herbItemBuyout or herbMinItemBuyout), tostring(maxPrice)
-		-- ))
 	end
 
 	if not maxPrice then

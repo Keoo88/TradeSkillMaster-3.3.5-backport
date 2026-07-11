@@ -44,9 +44,13 @@ function private.ScanThread(auctionScan)
 	assert(ClientInfo.IsVanillaClassic() or ClientInfo.IsBCClassic() or ClientInfo.IsWrathClassic())
 	local numQueries = auctionScan:GetNumQueries()
 	if numQueries == 0 then
-		auctionScan:NewQuery()
+		local query = auctionScan:NewQuery()
 			:AddCustomFilter(private.QueryFilter)
 			:SetPage("FIRST")
+		-- 3.3.5: как и в BuyoutSearch — найденные лоты остаются в списке между
+		-- пересканами (без этого лот пропадал, когда сдвигался с первой страницы
+		-- по мере истечения других аукционов). Список чистится при рестарте скана.
+		query:SetAccumulate(true)
 	else
 		assert(numQueries == 1)
 	end
@@ -59,6 +63,11 @@ function private.ScanThread(auctionScan)
 end
 
 function private.QueryFilter(_, subRow)
+	-- 3.3.5 sticky (см. BuyoutSearch): уже принятый в список лот не отфильтровывается
+	-- повторно — ни дрейфом порога, ни временным отсутствием данных
+	if subRow:IsSubRow() and subRow._sniperKept then
+		return false
+	end
 	local itemString = subRow:GetItemString()
 	if not itemString or not subRow:IsSubRow() or not subRow:HasRawData() then
 		-- can only filter complete subRows
@@ -71,10 +80,20 @@ function private.QueryFilter(_, subRow)
 	end
 
 	local _, itemDisplayedBid = subRow:GetDisplayedBids()
-	return itemDisplayedBid > maxPrice
+	local filtered = itemDisplayedBid > maxPrice
+	if not filtered then
+		-- Принятый снайп: фиксируем порог, чтобы отображаемый % не дрейфовал
+		subRow._sniperKept = true
+		subRow._sniperMaxPrice = maxPrice
+	end
+	return filtered
 end
 
 function private.MarketValueFunction(row)
+	-- 3.3.5: для принятого лота возвращаем порог на момент находки (см. BuyoutSearch)
+	if row._sniperMaxPrice then
+		return row._sniperMaxPrice
+	end
 	local itemString = row:GetItemString()
 	return itemString and SniperOperation.GetMaxPrice(itemString) or nil
 end
