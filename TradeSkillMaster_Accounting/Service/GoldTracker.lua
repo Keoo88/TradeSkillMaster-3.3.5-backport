@@ -100,7 +100,12 @@ function GoldTracker.OnInitialize(settingsDB)
 
 	TempTable.Release(validGuilds)
 	private.currentCharacterKey = SessionInfo.FormatCharacterName(SessionInfo.GetCharacterName(), SessionInfo.GetFactionrealmName(), true)
-	assert(private.characterLog[private.currentCharacterKey])
+	-- 3.3.5 fix: мягкая деградация вместо assert. Лог текущего персонажа обязан
+	-- существовать (settings-фреймворк создаёт дефолт), но при сбое миграции
+	-- настроек assert ронял весь Accounting на логине — создаём пустой лог.
+	if not private.characterLog[private.currentCharacterKey] then
+		private.characterLog[private.currentCharacterKey] = GoldLog.New()
+	end
 end
 
 function GoldTracker.OnEnable()

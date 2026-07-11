@@ -38,6 +38,7 @@ local private = {
 	levelStatsMinTimeQuery = nil,
 	statsMinTimeQuery = nil,
 	syncHashesThread = nil,
+	loadOtherRealmsThread = nil,
 	isSyncHashesThreadRunning = false,
 	syncHashDayCache = {},
 	syncHashDayCacheIsInvalid = {},
@@ -100,6 +101,8 @@ function Transactions.OnInitialize(settingsDB)
 		:AddIndex("levelItemString")
 		:AddIndex("time")
 		:Commit()
+	-- 3.3.5 perf: поток загрузки чужих реалмов должен существовать до LoadFromSettings
+	private.loadOtherRealmsThread = Threading.New("TRANSACTIONS_LOAD_OTHER_REALMS", private.LoadOtherRealmsThread)
 	private.LoadFromSettings()
 	private.dbSummary = Database.NewSchema("TRANSACTIONS_SUMMARY")
 		:AddUniqueStringField("itemString")
@@ -620,9 +623,19 @@ function private.LoadFromSettings()
 	private.LoadCSVData("buy", private.settings.csvBuys, currentRealm)
 	private.db:BulkInsertEnd()
 
+	private.OnItemRecordsChanged("sale")
+	private.OnItemRecordsChanged("buy")
+
+	-- 3.3.5 perf: чужие реалмы декодируются в потоке (LoadOtherRealmsThread), а не
+	-- синхронно на логине — до 50k CSV-записей на реалм давали фриз входа в мир.
+	-- Полный collectgarbage() убран: GC-цикл на большой куче — это сотни мс фриза;
+	-- инкрементальный GC справится сам.
+	Threading.Start(private.loadOtherRealmsThread)
+end
+
+function private.LoadOtherRealmsThread()
 	-- Load other realms as long as they aren't too big
-	private.db:BulkInsertStart()
-	private.db:BulkInsertPartition()
+	local currentRealm = SessionInfo.GetRealmName()
 	local realms = TempTable.Acquire()
 	for _, csvSales, realm in private.settings:AccessibleValueIterator("csvSales") do
 		if realm ~= currentRealm then
@@ -642,26 +655,35 @@ function private.LoadFromSettings()
 			realms[realm] = realms[realm] + #csvBuys
 		end
 	end
+	local numLoaded = 0
 	for _, realm in ipairs(realms) do
 		local isLimited = realms[realm] > 4000000
 		if isLimited then
 			ChatMessage.PrintfUser(L["Only the last 6 months of Accounting purchases and sales data for %s was loaded. Consider clearing old Accounting data from the TSM settings on that realm."], realm)
 		end
 		local csvSales = private.settings:GetForScopeKey("csvSales", realm)
-		if csvSales then
-			private.LoadCSVData("sale", csvSales, realm, isLimited)
-		end
 		local csvBuys = private.settings:GetForScopeKey("csvBuys", realm)
-		if csvBuys then
-			private.LoadCSVData("buy", csvBuys, realm, isLimited)
+		if csvSales or csvBuys then
+			-- Per-realm bulk insert block, чтобы БД не оставалась в bulk-insert
+			-- режиме через yield (тултипы могут запрашивать её между кадрами)
+			private.db:BulkInsertStart()
+			private.db:BulkInsertPartition()
+			if csvSales then
+				private.LoadCSVData("sale", csvSales, realm, isLimited)
+			end
+			if csvBuys then
+				private.LoadCSVData("buy", csvBuys, realm, isLimited)
+			end
+			private.db:BulkInsertEnd()
+			numLoaded = numLoaded + 1
+			Threading.Yield(true)
 		end
 	end
 	TempTable.Release(realms)
-	private.db:BulkInsertEnd()
-
-	private.OnItemRecordsChanged("sale")
-	private.OnItemRecordsChanged("buy")
-	collectgarbage()
+	if numLoaded > 0 then
+		private.OnItemRecordsChanged("sale")
+		private.OnItemRecordsChanged("buy")
+	end
 end
 
 function private.LoadCSVData(recordType, csvStr, realm, isLimited)
@@ -686,6 +708,9 @@ function private.LoadCSVData(recordType, csvStr, realm, isLimited)
 	local minTime = isLimited and (time() - 180 * 24 * 60 * 60) or 0
 	local saveTimes = String.SafeSplit(private.settings:GetForScopeKey(saveTimeKey, realm), ",")
 	local saveTimeIndex = 1
+	-- NOTE: нельзя делать Threading.Yield() внутри этого цикла — он выполняется в
+	-- bulk-insert блоке, а NewQuery()/NewRow() ассертят при активном bulk insert
+	-- (тултип или новая транзакция между кадрами уронили бы аддон)
 	for itemString, stackSize, quantity, price, otherPlayer, player, timestamp, source in CSV.DecodeIterator(decodeContext) do
 		if tonumber(timestamp) >= minTime then
 			local saveTime = 0

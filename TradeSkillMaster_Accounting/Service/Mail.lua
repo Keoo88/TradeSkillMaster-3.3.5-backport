@@ -159,6 +159,19 @@ function private.RecordMail(index, subIndex, resolveNames)
 	sender = (sender and sender ~= "") and sender or "?"
 	if mailType == Inbox.MAIL_TYPE.SALE.AUCTION then
 		local itemName, buyer, bid, _, _, ahcut, _, _, quantity = Inbox.GetInvoiceInfo(index)
+		-- 3.3.5 fix: on cores without invoice data (Warmane) all invoice fields are
+		-- nil; recover the sale from the mail header instead of erroring out. The
+		-- header money already has the AH cut deducted, so use it directly.
+		if not bid then
+			itemName = itemName or Inbox.GetSaleItemNameFromSubject(subject)
+			if not itemName then
+				return false
+			end
+			bid = money
+			ahcut = 0
+			buyer = buyer or "?"
+		end
+		ahcut = ahcut or 0
 		buyer = buyer or AUCTION_HOUSE_MAIL_MULTIPLE_BUYERS or ""
 		if buyer == "" and not resolveNames then
 			-- Give up on resolving the buyer name
@@ -190,6 +203,14 @@ function private.RecordMail(index, subIndex, resolveNames)
 		end
 	elseif mailType == Inbox.MAIL_TYPE.BUY.AUCTION then
 		local _, buyer, bid, _, _, _, _, _, quantity = Inbox.GetInvoiceInfo(index)
+		-- 3.3.5 fix (зеркально ветке SALE.AUCTION): на ядрах, где GetInvoiceInfo
+		-- не возвращает данные, bid == nil ронял floor(bid / quantity) на каждой
+		-- попытке забора письма "Auction won". Восстановить цену покупки из
+		-- заголовка письма нельзя (в отличие от продажи), поэтому просто
+		-- пропускаем запись транзакции и позволяем забрать письмо.
+		if not bid or bid == 0 then
+			return true
+		end
 		-- 3.3.5a: 0 is truthy in Lua, so a 0 count (invoice has no attachment) slipped through the old
 		-- 'if not quantity' check and recorded sales/buys as x0 (breaking TOP SALE and bid/quantity).
 		if not quantity or quantity == 0 then
@@ -288,7 +309,11 @@ function private.RecordMail(index, subIndex, resolveNames)
 			local qty = strmatch(str, "%(([0-9]+)%)")
 			qty = tonumber(qty)
 			local itemString = ItemInfo.ItemNameToItemString(codName)
-			if itemString then
+			-- 3.3.5 fix: если сервер обрезал subject и "(N)" не распарсился,
+			-- qty == nil ронял floor(money / qty); записываем как перевод денег
+			if not qty or qty <= 0 then
+				TSM.Accounting.Money.InsertMoneyTransferIncome(money, sender, saleTime)
+			elseif itemString then
 				local copper = floor(money / qty + 0.5)
 				local maxStack = ItemInfo.GetMaxStack(itemString) or 1
 				local stacks = ceil(qty / maxStack)
