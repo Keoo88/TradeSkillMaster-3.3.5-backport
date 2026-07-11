@@ -43,6 +43,9 @@ local MAX_OPEN_PASSES = 15
 -- читаем живой инбокс, а не догоняющую трекинг-БД, длинная пауза не нужна — хватает короткой,
 -- чтобы сервер успел применить удаления и подтянуть скрытые письма.
 local CLASSIC_MAIL_RESCAN_SETTLE = 0.2
+-- 3.3.5/Warmane: запас поверх MAIL_REFRESH_TIME при ожидании подгрузки следующей пачки писем
+-- (сервер отдаёт скрытые письма после ~60с троттла) — чтобы не прерваться на самой границе окна.
+local CLASSIC_REFRESH_MARGIN = 5
 local MANUAL_MAIL_TYPES = {
 	[Inbox.MAIL_TYPE.OTHER.GOLD_AND_ITEMS] = true,
 	[Inbox.MAIL_TYPE.OTHER.ITEMS] = true,
@@ -153,37 +156,84 @@ end
 
 -- 3.3.5/Warmane: цикл сбора для классики по образцу Postal (Modules/OpenAll.lua) и TSM 2.8
 -- (Mailing/Inbox.lua): идём по ЖИВОМУ инбоксу и продвигаемся к следующему письму только после
--- подтверждения изъятия текущего. Раньше классика собирала пачку индексов из трекинг-БД (которая
+-- подтверждения изъятия текущего. Раньше класс��ка собирала пачку индексов из трекинг-БД (которая
 -- отстаёт от инбокса) и делала Sleep(1) между проходами — отсюда рваный сбор «пару писем — пауза».
 -- Теперь пейсинг задаёт само подтверждение изъятия, без длинных пауз.
 function private.OpenMailThreadClassic(autoRefresh, keepMoney, filterText, filterType)
 	filterText = strlower(filterText or "")
-	local passCount = 0
+	-- Внешний цикл по «пачкам»: клиент 3.3.5 держит в инбоксе максимум ~50 писем, остальные сервер
+	-- отдаёт только после ~60с рефреша. Пока держали SHIFT (autoRefresh) и на сервере есть ещё не
+	-- подгруженные письма — ждём рефреш и продолжаем сбор, иначе останавливаемся как раньше.
 	while true do
-		local tookAny = false
-		local numLeft = Inbox.GetNumItems()
-		-- Нисходящий обход безопасен при удалении: изъятое письмо сдвигает только большие индексы,
-		-- которые мы уже прошли; ещё не обработанные меньшие индексы не смещаются (как в Postal).
-		for index = numLeft, 1, -1 do
-			Threading.WaitForFunction(private.CanOpenMail)
-			if private.OpenSingleMailClassic(index, keepMoney, filterText, filterType) then
-				tookAny = true
+		-- Внутренний «догоняющий» цикл по ЖИВОМУ инбоксу текущей пачки (прежнее поведение).
+		local passCount = 0
+		local tookAnyThisBatch = false
+		while true do
+			local tookAny = false
+			local numLeft = Inbox.GetNumItems()
+			-- Нисходящий обход безопасен при удалении: изъятое письмо сдвигает только большие индексы,
+			-- которые мы уже прошли; ещё не обработанные меньшие индексы не смещаются (как в Postal).
+			for index = numLeft, 1, -1 do
+				Threading.WaitForFunction(private.CanOpenMail)
+				if private.OpenSingleMailClassic(index, keepMoney, filterText, filterType) then
+					tookAny = true
+					tookAnyThisBatch = true
+				end
 			end
-		end
-		passCount = passCount + 1
+			passCount = passCount + 1
 
-		local _, numTotal = Inbox.GetNumItems()
-		-- Повторяем проход, только пока реально что-то собираем и остаются письма (со страховочным
-		-- лимитом MAX_OPEN_PASSES от зацикливания).
-		if not (tookAny and numTotal > 0 and passCount < MAX_OPEN_PASSES) then
+			local _, numTotal = Inbox.GetNumItems()
+			-- Повторяем проход, только пока реально что-то собираем и остаются письма (со страховочным
+			-- лимитом MAX_OPEN_PASSES от зацикливания).
+			if not (tookAny and numTotal > 0 and passCount < MAX_OPEN_PASSES) then
+				break
+			end
+			CheckInbox()
+			Threading.Sleep(CLASSIC_MAIL_RESCAN_SETTLE)
+		end
+
+		-- Продолжаем на следующую пачку только для «Open All» (autoRefresh) и когда сервер сообщает,
+		-- что писем всего больше, чем сейчас загружено в инбокс (numTotal > numLeft).
+		local numLeft, numTotal = Inbox.GetNumItems()
+		if not (autoRefresh and tookAnyThisBatch and numTotal > numLeft) then
 			break
 		end
-		CheckInbox()
-		Threading.Sleep(CLASSIC_MAIL_RESCAN_SETTLE)
+		-- Ждём подгрузки следующей пачки (окно рефреша ~MAIL_REFRESH_TIME). Если новая пачка так и не
+		-- пришла в отведённое окно — останавливаемся.
+		if not private.WaitForInboxRefresh(numLeft) then
+			break
+		end
 	end
 
 	private.PrintMoneyCollected()
 	private.isOpening = false
+end
+
+-- 3.3.5/Warmane: ждёт, пока клиент подгрузит следующую пачку писем (>50 в инбоксе). Запрашивает
+-- рефреш через CheckInbox() и опрашивает живой инбокс, пока число загруженных писем не вырастет
+-- относительно prevNumLeft. Обновляет private.lastCheck на момент реального запроса, чтобы счётчик
+-- «Reload UI (NN)» в UI отсчитывал именно это окно ожидания. Возвращает true, если пачка пришла.
+function private.WaitForInboxRefresh(prevNumLeft)
+	CheckInbox()
+	private.lastCheck = time()
+	-- Синхронизируем UI-счётчик «Reload UI (NN)» со стартом реального окна рефреша.
+	TSM.UI.MailingUI.Inbox.ResetRefreshCountdown()
+	local deadline = GetTime() + MAIL_REFRESH_TIME + CLASSIC_REFRESH_MARGIN
+	local nextRequery = GetTime() + MAIL_REFRESH_TIME
+	while GetTime() < deadline do
+		Threading.Sleep(CLASSIC_MAIL_RESCAN_SETTLE)
+		if Inbox.GetNumItems() > prevNumLeft then
+			return true
+		end
+		-- Первый CheckInbox сервер мог «проглотить» из-за троттла — периодически повторяем запрос.
+		if GetTime() >= nextRequery then
+			CheckInbox()
+			private.lastCheck = time()
+			TSM.UI.MailingUI.Inbox.ResetRefreshCountdown()
+			nextRequery = GetTime() + MAIL_REFRESH_TIME
+		end
+	end
+	return false
 end
 
 -- 3.3.5/Warmane: собирает ОДНО письмо и ограниченно ждёт подтверждения изъятия. Возвращает true,
@@ -397,6 +447,9 @@ function private.CheckInbox()
 
 	if not TSM.UI.MailingUI.Inbox.IsMailOpened() then
 		CheckInbox()
+		-- 3.3.5/Warmane: якорим счётчик «Reload UI (NN)» на момент реального запроса инбокса, чтобы он
+		-- отсчитывал именно от последнего фактического рефреша, а не только через visible-callback.
+		private.lastCheck = time()
 	end
 	private.ScheduleCheck()
 end
