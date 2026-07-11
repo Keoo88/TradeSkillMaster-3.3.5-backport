@@ -855,7 +855,10 @@ function private.ProfitPctVirtualField(craftString)
 end
 
 function private.SaleRateVirtualField(itemString)
-	return TSM.AuctionDB.GetRegionItemData(itemString, "regionSalePercent") or Math.GetNan()
+	-- 3.3.5: нет TSM App → regionSalePercent всегда nil. Используем локальную
+	-- историю продаж из Accounting как реальный аналог sale rate.
+	local rate = TSM.Accounting and TSM.Accounting.GetSaleRate(itemString) or nil
+	return rate or Math.GetNan()
 end
 
 function private.GetRestockHelpMessage(itemString)

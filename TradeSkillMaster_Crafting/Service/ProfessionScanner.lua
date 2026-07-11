@@ -74,7 +74,12 @@ end
 function private.ScanRecipe(professionName, craftString)
 	local itemString = Profession.GetItemStringByCraftString(craftString)
 	local craftName = Profession.GetCraftNameByCraftString(craftString)
-	assert(itemString and craftName ~= "")
+	-- 3.3.5 fix: не роняем скан ВСЕЙ профессии assert'ом из-за одного рецепта
+	-- с незагруженными данными (nil itemString у энчантов/линков на кастомных
+	-- ядрах) — возвращаем false, рецепт попадёт в numFailed и скан повторится
+	if not itemString or not craftName or craftName == "" then
+		return false
+	end
 
 	local lNum, hNum = Profession.GetCraftedQuantityRange(craftString)
 	local numResult = floor(((lNum or 1) + (hNum or 1)) / 2)

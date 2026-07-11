@@ -88,6 +88,13 @@ function ProfessionUtil.OnInitialize()
 		private.DoCraftCallback(false, true)
 	end
 	local function ClearCraftCast()
+		-- 3.3.5 fix: если окно профессии закрыли во время активного крафта,
+		-- завершаем его через callback (failure) — иначе UI, ждущий колбэк,
+		-- зависал в состоянии "CRAFTING", т.к. поля чистились без уведомления
+		if private.craftSpellId and private.craftCallback then
+			private.DoCraftCallback(false, true)
+			return
+		end
 		private.recipeString = nil
 		private.craftQuantity = nil
 		private.craftSpellId = nil
@@ -98,7 +105,13 @@ function ProfessionUtil.OnInitialize()
 	end
 	Event.Register("UNIT_SPELLCAST_INTERRUPTED", SpellCastFailedEventHandler)
 	Event.Register("UNIT_SPELLCAST_FAILED", SpellCastFailedEventHandler)
-	Event.Register("UNIT_SPELLCAST_FAILED_QUIET", SpellCastFailedEventHandler)
+	-- 3.3.5 fix (зеркально Destroying/Core.lua): UNIT_SPELLCAST_FAILED_QUIET
+	-- добавлен в MoP — регистрация неизвестного события на 3.3.5a даёт Lua error
+	-- на логине и обрывает инициализацию Crafting; UNIT_SPELLCAST_FAILED и так
+	-- покрывает отказы
+	if not ClientInfo.IsVanillaClassic() and not ClientInfo.IsBCClassic() and not ClientInfo.IsWrathClassic() then
+		Event.Register("UNIT_SPELLCAST_FAILED_QUIET", SpellCastFailedEventHandler)
+	end
 	Event.Register("TRADE_SKILL_CLOSE", ClearCraftCast)
 	if not ClientInfo.IsRetail() then
 		Event.Register("CRAFT_CLOSE", ClearCraftCast)
@@ -341,10 +354,12 @@ function private.CraftTimeoutMonitor()
 		private.castingTimeout = GetTime() + 1
 		return
 	elseif private.craftSpellId ~= spellId then
+		-- 3.3.5 fix: завершаем крафт через callback (failure) вместо тихого
+		-- выхода — раньше craft-состояние оставалось взведённым и UI навсегда
+		-- зависал в "CRAFTING". На 3.3.5 чужой каст во время очереди крафта
+		-- легко спровоцировать (авто-еда, бинты, макросы).
 		Log.Err("Crafting something else (%s, %s)", private.craftSpellId, spellId)
-		private.castingTimeout = nil
-		private.craftTimeout = nil
-		private.timeoutTimer:Cancel()
+		private.DoCraftCallback(false, true)
 		return
 	end
 

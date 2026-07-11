@@ -25,8 +25,17 @@ local private = {
 	optionalMatTemp = {},
 	matsTemp = {},
 	qualityMatTemp = {},
+	-- 3.3.5 perf: кэш GetTotals — UI зовёт его на каждую перерисовку, а без
+	-- кэша каждый вызов пересчитывает стоимость всех рецептов очереди.
+	-- Инвалидация: любое изменение очереди (SetNum/Clear) + короткий TTL,
+	-- чтобы подхватывать изменения цен.
+	totalsCacheTime = 0,
+	totalsCacheCost = nil,
+	totalsCacheProfit = nil,
+	totalsCacheCastTime = nil,
 }
 local MAX_NUM_QUEUED = 9999
+local TOTALS_CACHE_TTL = 5
 
 
 
@@ -73,6 +82,7 @@ end
 function Queue.SetNum(recipeString, num)
 	assert(type(recipeString) == "string")
 	assert(strfind(recipeString, "^r:%d+"))
+	private.totalsCacheTime = 0
 	local numQueued = min(max(Math.Round(num or 0), 0), MAX_NUM_QUEUED)
 	private.settings.craftingQueue[recipeString] = numQueued > 0 and numQueued or nil
 	local query = private.db:NewQuery()
@@ -112,6 +122,7 @@ function Queue.Adjust(recipeString, amount)
 end
 
 function Queue.Clear()
+	private.totalsCacheTime = 0
 	wipe(private.settings.craftingQueue)
 	private.db:Truncate()
 end
@@ -121,6 +132,10 @@ function Queue.GetNumItems()
 end
 
 function Queue.GetTotals()
+	-- 3.3.5 perf: см. комментарий у totalsCacheTime
+	if GetTime() - private.totalsCacheTime < TOTALS_CACHE_TTL then
+		return private.totalsCacheCost, private.totalsCacheProfit, private.totalsCacheCastTime
+	end
 	local totalCost, totalProfit, totalCastTimeMs = nil, nil, nil
 	local query = private.db:NewQuery()
 		:Select("recipeString", "craftString", "num")
@@ -141,7 +156,11 @@ function Queue.GetTotals()
 		end
 	end
 	query:Release()
-	return totalCost, totalProfit, totalCastTimeMs and ceil(totalCastTimeMs / 1000) or nil
+	private.totalsCacheTime = GetTime()
+	private.totalsCacheCost = totalCost
+	private.totalsCacheProfit = totalProfit
+	private.totalsCacheCastTime = totalCastTimeMs and ceil(totalCastTimeMs / 1000) or nil
+	return private.totalsCacheCost, private.totalsCacheProfit, private.totalsCacheCastTime
 end
 
 function Queue.RestockGroups(groups)
@@ -208,7 +227,11 @@ function private.RestockItem(itemString)
 			haveQuantity = haveQuantity - AltTracking.GetMailQuantity(itemString, player)
 		end
 	end
-	assert(haveQuantity >= 0)
+	-- 3.3.5 fix: clamp вместо assert. NumInventory и AltTracking на backport'е
+	-- могут расходиться охватом источников (например, почта игнорируемого
+	-- персонажа, не учтённая в NumInventory) — разность уходила в минус и
+	-- assert ронял весь Restock Groups.
+	haveQuantity = max(haveQuantity, 0)
 	local neededQuantity = CraftingOperation.GetRestockQuantity(itemString, haveQuantity)
 	if neededQuantity == 0 then
 		return
