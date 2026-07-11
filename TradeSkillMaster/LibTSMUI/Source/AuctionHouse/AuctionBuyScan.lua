@@ -633,6 +633,7 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		-- and the consecutive buy-failure counter
 		self._vanishRefindDone = nil
 		self._buyoutRetries = nil
+		self._findForceQuery = nil
 		if selection and selection:IsSubRow() then
 			local ownerStr = selection:GetOwnerInfo()
 			local isPlayerOrAlt = self._isPlayerFunc(ownerStr, true)
@@ -659,7 +660,12 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		state.findHash = state.selectedAuction:GetHashes()
 		state.findHashIsSelection = true
 		state.findResult = nil
-		state.auctionScan:FindAuction(state.selectedAuction, manager:CallbackToProcessAction("ACTION_HANDLE_FIND_RESULT"), false)
+		-- 3.3.5 buy-after-buy fix: after a failed buy the client "list" is stale
+		-- (bought rows reflowed the server list), so the retry find must skip the
+		-- current-page shortcut and do a fresh per-item query. One-shot.
+		local forceQuery = self._findForceQuery
+		self._findForceQuery = nil
+		state.auctionScan:FindAuction(state.selectedAuction, manager:CallbackToProcessAction("ACTION_HANDLE_FIND_RESULT"), false, forceQuery)
 	elseif action == "ACTION_HANDLE_FIND_RESULT" then
 		local result = ...
 		AuctionScan.ReleaseLock(state.scanTypeName)
@@ -901,6 +907,10 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 					state.findResult = nil
 					state.findDeferred = false
 					state.pendingBuyOnFind = true
+					-- 3.3.5 buy-after-buy fix: the lot vanished from the stored index because
+					-- the list reflowed after a buyout — the refind must requery, not re-walk
+					-- the same stale current page.
+					self._findForceQuery = true
 					return manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
 				end
 				-- Lot vanished between find and confirm. Don't loop through another find
@@ -1022,6 +1032,12 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				state.lastBuyIndex = nil
 			end
 			-- Rescan for this item
+			-- 3.3.5 buy-after-buy fix: the failed bid means the stored index no longer
+			-- matches the server's list (stale after a prior buyout reflowed it). The
+			-- current-page shortcut would re-match the same stale page and fail again
+			-- (the "Failed to buy" x3 -> lot dropped pattern), so force the retry find
+			-- to run a fresh per-item query which resyncs the native list.
+			self._findForceQuery = true
 			if state.auctionScrollTable and state.auctionScrollTable:GetSelectedRow() then
 				manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")
 			end
@@ -1179,6 +1195,8 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				state.lastBuyQuantity = 0
 				state.lastBuyIndex = nil
 			end
+			-- 3.3.5 buy-after-buy fix: same stale-list resync as the buyout failure path
+			self._findForceQuery = true
 			-- Rescan for this item
 			if state.auctionScrollTable and state.auctionScrollTable:GetSelectedRow() then
 				manager:ProcessAction("ACTION_FIND_SELECTED_AUCTION")

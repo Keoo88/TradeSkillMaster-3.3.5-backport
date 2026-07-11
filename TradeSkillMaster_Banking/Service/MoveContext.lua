@@ -25,7 +25,9 @@ local private = {
 	warBankToBag = nil,
 	bagToGuildBank = nil,
 	guildBankToBag = nil,
+	lastGuildQueryTime = 0,
 }
+local GetTime = GetTime
 
 
 
@@ -221,7 +223,15 @@ end
 
 function GuildBankToBagMoveContext.GetSlotQuantity(self, slotId)
 	local tab, slot = SlotId.Split(slotId)
-	GuildAPI.QueryTab(tab)
+	-- 3.3.5 perf: метод зовётся из poll-цикла MoveThread каждые ~50мс, а
+	-- QueryTab — это серверный запрос (QueryGuildBankTab), порождающий шквал
+	-- GUILDBANKBAGSLOTS_CHANGED. Троттлим до одного запроса в 0.5с — данные
+	-- и так приходят по событиям от предыдущих запросов.
+	local now = GetTime()
+	if now - private.lastGuildQueryTime >= 0.5 then
+		private.lastGuildQueryTime = now
+		GuildAPI.QueryTab(tab)
+	end
 	return GuildAPI.GetItemCount(tab, slot) or 0
 end
 
@@ -294,7 +304,12 @@ function private.BagSlotIdIterator(itemString)
 		:Select("slotId", "quantity")
 		:VirtualField("autoBaseItemString", "string", Group.TranslateItemString, "itemString")
 		:Equal("autoBaseItemString", itemString)
-	if TSM.Banking.IsGuildBankOpen() then
+	-- 3.3.5 fix (зеркально Mailing/Vendoring): флаг isBound в slotDB ненадёжен —
+	-- true для множества обычных предметов, из-за чего депозит в гильдбанк
+	-- молча пропускал валидные BoE-предметы. Применяем фильтр только на
+	-- клиентах с честным bound-флагом; на 3.3.5 попытка положить соулбаунд
+	-- будет отклонена сервером и отсечена retry-cap'ом в MoveThread.
+	if TSM.Banking.IsGuildBankOpen() and ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		query:Equal("isBound", false)
 	end
 	return query:IteratorAndRelease()

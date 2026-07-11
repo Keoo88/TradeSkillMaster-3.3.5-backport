@@ -20,10 +20,18 @@ local TempTable = LibTSMUI:From("LibTSMUtil"):Include("BaseType.TempTable")
 local Math = LibTSMUI:From("LibTSMUtil"):Include("Lua.Math")
 local Table = LibTSMUI:From("LibTSMUtil"):Include("Lua.Table")
 local Money = LibTSMUI:From("LibTSMUtil"):Include("UI.Money")
+local DelayTimer = LibTSMUI:From("LibTSMWoW"):IncludeClassType("DelayTimer")
 local private = {
 	subRowsTemp = {}, ---@type AuctionSubRow[]
 	subRowSortValueTemp = {},
+	throttleTimerCount = 0,
 }
+-- 3.3.5 perf: минимальный интервал между полными пересборками таблицы результатов.
+-- Каждая страница скана дёргает полный rebuild+sort всех накопленных строк — на
+-- широком поиске это давало 5-секундные статтеры (стоимость растёт квадратично
+-- к прогрессу скана). Троттлим до ~3 обновлений/сек с гарантированным трейлинг-
+-- обновлением, чтобы финальное состояние всегда было точным.
+local UPDATE_DATA_THROTTLE = 0.3
 local SUB_ROW_TINT_PCT = -20
 local INDENT_WIDTH = 8
 local ICON_SPACING = 4
@@ -147,6 +155,9 @@ function AuctionScrollTable:__init(colInfo)
 	self._selectionDisabled = false
 	self._pctTooltip = nil
 	self._createdGroupName = nil
+	self._lastFullUpdateTime = 0
+	self._updateDataPending = false
+	self._updateThrottleTimer = nil
 
 	self._header.cells.pct:TSMSetScript("OnEnter", self:__closure("_HandlePctHeaderEnter"))
 	self._header.cells.pct:TSMSetScript("OnLeave", self:__closure("_HandlePctHeaderLeave"))
@@ -161,6 +172,11 @@ function AuctionScrollTable:Release()
 	self._auctionScan = nil
 	self._marketValueFunc = nil
 	self._isPlayerFunc = nil
+	if self._updateThrottleTimer then
+		self._updateThrottleTimer:Cancel()
+	end
+	self._lastFullUpdateTime = 0
+	self._updateDataPending = false
 	wipe(self._expanded)
 	wipe(self._rawData)
 	wipe(self._rowByItem)
@@ -281,6 +297,10 @@ end
 
 ---If there's a single auction row in the results, expand it.
 function AuctionScrollTable:ExpandSingleResult()
+	-- 3.3.5 perf fix: если полная пересборка отложена троттлингом, _rawData
+	-- устарела — _SetExpanded ассертит на несоответствии сортировки subRow'ов.
+	-- Принудительно применяем отложенное обновление перед разворотом.
+	self:_FlushPendingUpdateData()
 	-- if only one result, expand it
 	local firstRow = self._rawData[1]
 	if #self._rawData ~= 1 or not firstRow:IsSubRow() then
@@ -309,6 +329,24 @@ function AuctionScrollTable.__protected:_UpdateData(_, _, updatedRow)
 		-- Didn't need to do a full update
 		return
 	end
+	-- 3.3.5 perf: троттлинг полной пересборки (см. UPDATE_DATA_THROTTLE).
+	-- Если недавно уже пересобирали — планируем одно трейлинг-обновление
+	-- и выходим, не блокируя кадр.
+	local now = GetTime()
+	local elapsed = now - self._lastFullUpdateTime
+	if elapsed < UPDATE_DATA_THROTTLE then
+		if not self._updateDataPending then
+			self._updateDataPending = true
+			if not self._updateThrottleTimer then
+				private.throttleTimerCount = private.throttleTimerCount + 1
+				self._updateThrottleTimer = DelayTimer.New("AUCTION_SCROLL_TABLE_UPDATE_"..private.throttleTimerCount, self:__closure("_HandleThrottledUpdateData"))
+			end
+			self._updateThrottleTimer:RunForTime(UPDATE_DATA_THROTTLE - elapsed)
+		end
+		return
+	end
+	self._lastFullUpdateTime = now
+	self._updateDataPending = false
 	wipe(self._rawData)
 	wipe(self._rowByItem)
 	local settings = self:_GetSettingsValue()
@@ -422,6 +460,31 @@ function AuctionScrollTable.__protected:_UpdateData(_, _, updatedRow)
 	if not okDraw then TSMDBG.LogErr("ScrollTable:Draw", errDraw) end
 	local okSel, errSel = pcall(self._UpdateSelectionData, self)
 	if not okSel then TSMDBG.LogErr("ScrollTable:_UpdateSelectionData", errSel) end
+end
+
+---Трейлинг-обновление после троттлинга (3.3.5 perf)
+function AuctionScrollTable.__protected:_HandleThrottledUpdateData()
+	if not self._auctionScan then
+		return
+	end
+	self._updateDataPending = false
+	self._lastFullUpdateTime = 0
+	self:_UpdateData()
+end
+
+---Немедленно применяет отложенную троттлингом пересборку (3.3.5 perf).
+---Нужно вызывать перед любым чтением _rawData извне (напр. ExpandSingleResult),
+---иначе данные могут быть устаревшими.
+function AuctionScrollTable.__protected:_FlushPendingUpdateData()
+	if not self._updateDataPending or not self._auctionScan then
+		return
+	end
+	if self._updateThrottleTimer then
+		self._updateThrottleTimer:Cancel()
+	end
+	self._updateDataPending = false
+	self._lastFullUpdateTime = 0
+	self:_UpdateData()
 end
 
 ---@param updatedRow AuctionRow

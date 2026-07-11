@@ -6,6 +6,7 @@
 
 local TSM = _G.TSMAddon ---@type TSM
 local Util = TSM.Banking:NewPackage("Util")
+local ClientInfo = TSM.LibTSMWoW:Include("Util.ClientInfo")
 local TempTable = TSM.LibTSMUtil:Include("BaseType.TempTable")
 local Group = TSM.LibTSMTypes:Include("Group")
 local BagTracking = TSM.LibTSMService:Include("Inventory.BagTracking")
@@ -28,7 +29,10 @@ function Util.BagIterator(autoBaseItems)
 	else
 		query:Select("bag", "slot", "itemString", "quantity")
 	end
-	if TSM.Banking.IsGuildBankOpen() then
+	-- 3.3.5 fix (зеркально MoveContext.BagSlotIdIterator): ненадёжный isBound
+	-- прятал валидные BoE-предметы от депозита в гильдбанк; фильтр применяем
+	-- только на клиентах с честным bound-флагом
+	if TSM.Banking.IsGuildBankOpen() and ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		query:Equal("isBound", false)
 	end
 	return query:IteratorAndRelease()

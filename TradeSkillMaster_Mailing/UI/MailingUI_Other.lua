@@ -222,7 +222,9 @@ function private.ConvertLimitValue(value)
 	if not value then
 		return nil
 	end
-	return value > 0 and value <= MAXIMUM_BID_PRICE and value or nil
+	-- 3.3.5 fix: MAXIMUM_BID_PRICE определяется LoD-аддоном Blizzard_AuctionUI —
+	-- если почту открыли, не посетив AH в этой сессии, глобал равен nil
+	return value > 0 and value <= (MAXIMUM_BID_PRICE or 2000000000) and value or nil
 end
 
 function private.LimitValidateFunc(_, value)

@@ -21,6 +21,10 @@ local private = {
 	moneyUseIcon = nil,
 }
 local TOOLTIP_CACHE_TIME = 5
+-- 3.3.5 perf: сколько недавних предметов держать в кэше построенных строк.
+-- Без этого чередование наведения на два предмета (сравнение в сумке)
+-- вызывало полный rebuild (включая все CustomString-вычисления) каждый раз.
+local TOOLTIP_CACHE_SLOTS = 4
 local LINE_PART_SEP = "\t"
 local DISABLED_TINT = -30
 
@@ -67,6 +71,7 @@ function TooltipBuilder.__private:__init()
 	self._itemString = nil
 	self._quantity = nil
 	self._disabled = nil
+	self._cacheStore = {}
 	ModifierKey.RegisterCallback(self:__closure("_InvalidateLastUpdate"))
 	Event.Register("BAG_UPDATE_DELAYED", self:__closure("_InvalidateLastUpdate"))
 end
@@ -254,6 +259,41 @@ end
 
 function TooltipBuilder.__private:_InvalidateLastUpdate()
 	self._lastUpdate = 0
+	-- Модификатор / изменение сумок меняет содержимое строк — весь кэш невалиден
+	wipe(self._cacheStore)
+end
+
+---Сохраняет построенные строки текущего предмета в multi-slot кэш (3.3.5 perf).
+---Таблицы передаются по ссылке (без копирования): self получает свежие таблицы.
+function TooltipBuilder.__private:_StashCurrentLines()
+	if not self._itemString or self._itemString == ItemString.GetPlaceholder() or self._inCombat or #self._lines == 0 then
+		return
+	end
+	if self._lastUpdate == 0 or LibTSMService.GetTime() - self._lastUpdate >= TOOLTIP_CACHE_TIME then
+		-- Уже устарело — нет смысла хранить
+		return
+	end
+	local key = self._itemString.."@"..self._quantity
+	-- Вытеснение самого старого слота при переполнении
+	local numSlots = 0
+	local oldestKey, oldestTime = nil, math.huge
+	for k, entry in pairs(self._cacheStore) do
+		numSlots = numSlots + 1
+		if entry.time < oldestTime then
+			oldestKey, oldestTime = k, entry.time
+		end
+	end
+	if numSlots >= TOOLTIP_CACHE_SLOTS and not self._cacheStore[key] and oldestKey then
+		self._cacheStore[oldestKey] = nil
+	end
+	self._cacheStore[key] = {
+		lines = self._lines,
+		colors = self._lineColors,
+		time = self._lastUpdate,
+		disabled = self._disabled,
+	}
+	self._lines = {}
+	self._lineColors = {}
 end
 
 function TooltipBuilder.__private:_TextsToStr(...)
@@ -285,6 +325,27 @@ function TooltipBuilder:_Prepare(itemString, quantity)
 		-- Have the lines cached already
 		return true
 	end
+
+	-- 3.3.5 perf: multi-slot кэш — при смене предмета пробуем восстановить
+	-- ранее построенные строки вместо полного rebuild
+	if itemString ~= ItemString.GetPlaceholder() and not ClientInfo.IsInCombat() then
+		local key = itemString.."@"..quantity
+		local entry = self._cacheStore[key]
+		if entry and LibTSMService.GetTime() - entry.time < TOOLTIP_CACHE_TIME then
+			self:_StashCurrentLines()
+			self._cacheStore[key] = nil
+			self._lines = entry.lines
+			self._lineColors = entry.colors
+			self._level = 0
+			self._lastUpdate = entry.time
+			self._inCombat = false
+			self._itemString = itemString
+			self._quantity = quantity
+			self._disabled = entry.disabled
+			return true
+		end
+	end
+	self:_StashCurrentLines()
 
 	wipe(self._lines)
 	wipe(self._lineColors)

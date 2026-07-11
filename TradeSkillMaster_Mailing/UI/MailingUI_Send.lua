@@ -544,7 +544,9 @@ function private.ConvertMoneyValue(value)
 	if not value then
 		return nil
 	end
-	local maxVal = private.isCOD and MAX_COD_AMOUNT or MAXIMUM_BID_PRICE
+	-- 3.3.5 fix: MAXIMUM_BID_PRICE определяется LoD-аддоном Blizzard_AuctionUI —
+	-- если почту открыли, не посетив AH в этой сессии, глобал равен nil
+	local maxVal = private.isCOD and MAX_COD_AMOUNT or (MAXIMUM_BID_PRICE or 2000000000)
 	return value >= 0 and value <= maxVal and value or nil
 end
 

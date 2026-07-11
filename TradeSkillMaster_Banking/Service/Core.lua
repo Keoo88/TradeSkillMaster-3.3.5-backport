@@ -29,6 +29,8 @@ local private = {
 	bankFrameOpen = false,
 }
 local MOVE_WAIT_TIMEOUT = 2
+-- 3.3.5: после стольких неудачных попыток слот исключается из перемещения
+local MAX_MOVE_ATTEMPTS = 3
 
 
 
@@ -79,6 +81,18 @@ end
 
 function Banking.MoveToBag(items, callback)
 	assert(private.openFrame)
+	-- 3.3.5 fix: предпроверка остатка дневных выносов из гильдбанка — иначе
+	-- каждый слот будет отклонён сервером и отсечён только retry-cap'ом
+	-- (3 попытки x 2с таймаут на слот)
+	if Banking.IsGuildBankOpen() then
+		local numWithdrawals = Guild.GetNumDailyWithdrawals(Guild.GetCurrentTab())
+		if numWithdrawals == 0 then
+			Log.Err("No guild bank withdrawals remaining today")
+			ChatMessage.PrintUser("No guild bank withdrawals remaining today.")
+			callback("DONE")
+			return
+		end
+	end
 	local context = Banking.IsGuildBankOpen() and Banking.MoveContext.GetGuildBankToBag() or (Banking.IsWarBankOpen() and Banking.MoveContext.GetWarbankToBag() or Banking.MoveContext.GetBankToBag())
 	private.StartMove(items, context, callback)
 end
@@ -199,6 +213,11 @@ function private.MoveThread(context, callback)
 	end
 
 	local numDone = 0
+	-- 3.3.5 fix: счётчик неудачных попыток на слот. Раньше слот удалялся из
+	-- slotIds ТОЛЬКО при подтверждённом уменьшении количества — перманентно
+	-- невозможное перемещение (сервер отклонил: соулбаунд в гильдбанк, лимит
+	-- депозитов/выносов, занятый слот) зацикливало поток навсегда.
+	local slotFailedAttempts = TempTable.Acquire()
 	while next(slotIds) do
 		local movedSlotId = nil
 		-- Do all the pending moves
@@ -235,7 +254,24 @@ function private.MoveThread(context, callback)
 			end
 			Threading.Yield(true)
 		end
+
+		-- 3.3.5 fix: после таймаута без прогресса помечаем неудачные слоты;
+		-- после MAX_MOVE_ATTEMPTS выкидываем слот и продолжаем с остальными
+		if not didMove then
+			for slotId in pairs(slotIds) do
+				if private.openFrame ~= "GUILD_BANK" or slotId == movedSlotId then
+					slotFailedAttempts[slotId] = (slotFailedAttempts[slotId] or 0) + 1
+					if slotFailedAttempts[slotId] >= MAX_MOVE_ATTEMPTS then
+						Log.Err("Giving up on move (slotId=%d, item=%s)", slotId, tostring(slotItemString[slotId]))
+						slotIds[slotId] = nil
+						numDone = numDone + 1
+						callback("PROGRESS", numDone / numMoves)
+					end
+				end
+			end
+		end
 	end
+	TempTable.Release(slotFailedAttempts)
 
 	if private.openFrame == "GUILD_BANK" then
 		Guild.QueryTab(Guild.GetCurrentTab())
@@ -314,7 +350,13 @@ function private.GuildBankVisibilityChanged(visible)
 		if private.openFrame == "GUILD_BANK" then
 			return
 		end
-		assert(not private.openFrame)
+		-- 3.3.5 fix: мягкая деградация вместо assert — на кастомных ядрах
+		-- гильдбанк может "открыться" до события закрытия обычного банка;
+		-- закрываем предыдущий фрейм и продолжаем
+		if private.openFrame then
+			Log.Err("Guild bank opened while %s was open", private.openFrame)
+			private.StopMove()
+		end
 		private.openFrame = "GUILD_BANK"
 	else
 		if not private.openFrame then
