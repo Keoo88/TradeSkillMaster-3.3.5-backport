@@ -59,8 +59,10 @@ function Util.GetLowestAuction(subRows, itemString, operationSettings, resultTbl
 			local _, itemBuyout = subRow:GetBuyouts()
 			local quantity = subRow:GetQuantities()
 			local timeLeft = subRow:GetListingInfo()
-			if not AuctioningOperation.IsAuctionFiltered(itemString, operationSettings, itemBuyout, quantity, timeLeft) then
-				assert(itemBuyout and itemBuyout > 0)
+			-- 3.3.5 fix: bid-only лоты (itemBuyout == 0) пропускаем вместо assert —
+			-- GetFilteredSubRows их уже отбрасывает, но защищаемся и здесь на случай
+			-- вызова с нефильтрованными subRows
+			if itemBuyout and itemBuyout > 0 and not AuctioningOperation.IsAuctionFiltered(itemString, operationSettings, itemBuyout, quantity, timeLeft) then
 				lowestItemBuyout = lowestItemBuyout or itemBuyout
 				if itemBuyout == lowestItemBuyout then
 					local ownerStr = subRow:GetOwnerInfo()
@@ -117,7 +119,12 @@ function Util.GetCancelScanResult(subRows, itemString, operationSettings, lowest
 			resultTbl.playerLowestItemBuyout = itemBuyout
 			resultTbl.playerLowestAuctionId = auctionId
 		end
-		local isLower = itemBuyout > lowestAuction.buyout or (itemBuyout == lowestAuction.buyout and auctionId < lowestAuction.auctionId)
+		-- 3.3.5 fix: при равной цене second-lowest — это ЛЮБОЙ другой лот
+		-- (auctionId ~= lowest), а не только с меньшим id. LowestAuctionCompare
+		-- ставит blacklist/whitelist выше id, поэтому lowest может оказаться не
+		-- с максимальным id — тогда сравнение "<" пропускало реальную конкуренцию
+		-- по той же цене и cancel-скан делал лишние/пропущенные отмены.
+		local isLower = itemBuyout > lowestAuction.buyout or (itemBuyout == lowestAuction.buyout and auctionId ~= lowestAuction.auctionId)
 		if not resultTbl.secondLowestBuyout and not AuctioningOperation.IsAuctionFiltered(itemString, operationSettings, itemBuyout, quantity, timeLeft) and isLower then
 			resultTbl.secondLowestBuyout = itemBuyout
 		end
@@ -176,7 +183,10 @@ function Util.GetFilteredSubRows(query, itemString, operationSettings, result)
 		local _, itemBuyout = subRow:GetBuyouts()
 		local quantity = subRow:GetQuantities()
 		local timeLeft = subRow:GetListingInfo()
-		if not AuctioningOperation.IsAuctionFiltered(itemString, operationSettings, itemBuyout, quantity, timeLeft) then
+		-- 3.3.5 fix: отбрасываем bid-only лоты (itemBuyout == 0) — на 3.3.5 они
+		-- повсеместны. Без этого нулевой буаут сортировался первым, ронял
+		-- assert в GetLowestAuction и отравлял решение ложным "below min price".
+		if itemBuyout and itemBuyout > 0 and not AuctioningOperation.IsAuctionFiltered(itemString, operationSettings, itemBuyout, quantity, timeLeft) then
 			tinsert(result, subRow)
 		end
 	end

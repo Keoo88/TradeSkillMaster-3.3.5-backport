@@ -628,7 +628,9 @@ function private.GeneratePosts(itemString, operationName, operationSettings, num
 		bid = floor(bid)
 	else
 		bid = max(Math.Round(bid, COPPER_PER_SILVER), COPPER_PER_SILVER)
-		buyout = max(Math.Round(buyout, COPPER_PER_SILVER), COPPER_PER_SILVER)
+		-- 3.3.5 fix: не навязываем минимум 1s нулевому буауту — buyout == 0
+		-- означает "лот без буаута" и должен остаться нулём
+		buyout = buyout > 0 and max(Math.Round(buyout, COPPER_PER_SILVER), COPPER_PER_SILVER) or 0
 	end
 
 	bid = min(bid, ClientInfo.HasFeature(ClientInfo.FEATURES.AH_COPPER) and MAXIMUM_BID_PRICE or MAXIMUM_BID_PRICE - 99)
@@ -867,6 +869,12 @@ function private.NextProcessRowQueryHelper(row)
 end
 
 function private.DebugLogInsert(itemString, ...)
+	-- 3.3.5 perf: ограничиваем рост лога — при постинге сотен стаков каждый
+	-- вызов format() создаёт строку, а лог чистится только на следующем скане.
+	-- 1000 записей достаточно для диагностики через ErrorForItem.
+	if #private.debugLog >= 2000 then
+		return
+	end
 	Table.InsertMultiple(private.debugLog, itemString, format(...))
 end
 
