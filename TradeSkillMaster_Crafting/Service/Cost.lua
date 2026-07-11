@@ -22,7 +22,16 @@ local private = {
 	matsTemp = {},
 	matsTempInUse = false,
 	currentMatProfession = nil,
+	-- 3.3.5 perf: мемоизация стоимости крафта. UI списка рецептов зовёт
+	-- GetCraftingCostByCraftString на каждую строку при каждой перерисовке
+	-- (фильтр, скролл, BAG_UPDATE во время крафта), а каждый вызов без кэша
+	-- рекурсивно обходит всё дерево материалов. TTL короткий (5с), чтобы
+	-- изменения цен и сумок не устаревали заметно.
+	costCache = {},
+	costCacheTime = 0,
 }
+local COST_CACHE_TTL = 5
+local COST_CACHE_NIL = newproxy and newproxy(false) or {}
 
 
 
@@ -74,6 +83,23 @@ function Cost.GetMatCost(itemString)
 end
 
 function Cost.GetCraftingCostByCraftString(craftString, optionalMats, qualityMats)
+	-- Кэшируем только простой путь (без optionalMats/qualityMats от вызывающего) —
+	-- это именно тот путь, которым UI пересчитывает каждую строку списка рецептов
+	local useCache = not optionalMats and not qualityMats
+	if useCache then
+		local now = GetTime()
+		if now - private.costCacheTime > COST_CACHE_TTL then
+			wipe(private.costCache)
+			private.costCacheTime = now
+		end
+		local cached = private.costCache[craftString]
+		if cached ~= nil then
+			if cached == COST_CACHE_NIL then
+				return nil, nil
+			end
+			return cached[1], cached[2]
+		end
+	end
 	local releaseQualityMats = false
 	if not qualityMats then
 		qualityMats = TempTable.Acquire()
@@ -82,6 +108,13 @@ function Cost.GetCraftingCostByCraftString(craftString, optionalMats, qualityMat
 	local cost, concentration = private.GetCraftingCostHelper(craftString, nil, optionalMats, qualityMats)
 	if releaseQualityMats then
 		TempTable.Release(qualityMats)
+	end
+	if useCache then
+		if cost == nil then
+			private.costCache[craftString] = COST_CACHE_NIL
+		else
+			private.costCache[craftString] = { cost, concentration }
+		end
 	end
 	return cost, concentration
 end

@@ -17,6 +17,14 @@ local CURRENT_VERSION = 3
 -- это предотвращает "вымывание" истории спам-ресканами.
 local MARKET_ALPHA = 0.27
 local HIST_BETA    = 0.033
+-- Адаптивная alpha: если дневной snapshot отклоняется от mkt сильнее чем на
+-- FAST_DEVIATION (в долях от mkt), значит EMA грубо неверна (отравленная
+-- история старой формулы, резкий сдвиг рынка) и обычная alpha будет догонять
+-- реальность неделю. В этом случае фолдим с FAST_ALPHA — схождение за 1-2 дня.
+-- Однодневный демпинг это не ломает: даже FAST_ALPHA оставляет 40% старой
+-- цены, а на следующий день рынок вернётся и mkt вернётся с ним.
+local FAST_DEVIATION = 0.4
+local FAST_ALPHA     = 0.6
 
 -- Initialize / migrate database
 local function EnsureDB()
@@ -86,8 +94,16 @@ function TSM_AuctionDB_RecordScan(scanData)
 					existing.mkt, existing.hist, existing.histDay = mv, mv, day
 				elseif day > existing.histDay then
 					local delta = day - existing.histDay
+					-- Адаптивная alpha: при большом отклонении snapshot'а от mkt
+					-- (>40%) ускоряем схождение — иначе отравленная история
+					-- (напр. накрученные 100g при реальном рынке 33g) неделю
+					-- держала бы завышенные минималки в операциях
+					local alpha = MARKET_ALPHA
+					if existing.mkt > 0 and math.abs(mv - existing.mkt) / existing.mkt > FAST_DEVIATION then
+						alpha = FAST_ALPHA
+					end
 					-- DBMarket: новый snapshot + decay-scaled EMA
-					existing.mkt = math.floor(mv + (existing.mkt - mv) * (1 - MARKET_ALPHA) ^ delta + 0.5)
+					existing.mkt = math.floor(mv + (existing.mkt - mv) * (1 - alpha) ^ delta + 0.5)
 					-- DBHistorical: медленная EMA от DBMarket
 					existing.hist = math.floor(existing.mkt + (existing.hist - existing.mkt) * (1 - HIST_BETA) ^ delta + 0.5)
 					existing.histDay = day

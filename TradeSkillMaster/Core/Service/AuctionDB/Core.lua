@@ -13,7 +13,6 @@ local Table = TSM.LibTSMUtil:Include("Lua.Table")
 local TempTable = TSM.LibTSMUtil:Include("BaseType.TempTable")
 local ItemString = TSM.LibTSMTypes:Include("Item.ItemString")
 local Threading = TSM.LibTSMTypes:Include("Threading")
-local ItemInfo = TSM.LibTSMService:Include("Item.ItemInfo")
 local CustomString = TSM.LibTSMTypes:Include("CustomString")
 local AppHelper = TSM.LibTSMApp:Include("Service.AppHelper")
 local private = {
@@ -135,12 +134,10 @@ function AuctionDB.OnEnable()
 		end
 	end
 
-	-- Pre-fetch item info for items currently on the AH
-	if private.localHolder then
-		for itemString in pairs(private.localHolder.itemLookup) do
-			ItemInfo.FetchInfo(itemString)
-		end
-	end
+	-- 3.3.5 perf: pre-fetch item info убран. Прогон FetchInfo по всей локальной
+	-- БД (тысячи предметов после полного скана) забивал очередь ItemInfo на
+	-- минуты после логина и слал серверу запрос на каждый некэшированный
+	-- предмет. ItemInfo лениво подгружает предметы при первом обращении.
 
 	-- Only show warning if no realm data AND no local data (for 3.3.5 private servers)
 	-- (localHolder существует всегда — проверять надо наличие данных в нём)
@@ -157,7 +154,8 @@ function AuctionDB.OnEnable()
 	CustomString.InvalidateCache("DBRegionSaleAvg")
 	CustomString.InvalidateCache("DBRegionSaleRate")
 	CustomString.InvalidateCache("DBRegionSoldPerDay")
-	collectgarbage()
+	-- 3.3.5 perf: полный collectgarbage() убран — GC-цикл на большой куче
+	-- (после декода локальной БД сканов) давал сотни мс фриза на логине.
 end
 
 function AuctionDB.GetAppDataUpdateTimes()
