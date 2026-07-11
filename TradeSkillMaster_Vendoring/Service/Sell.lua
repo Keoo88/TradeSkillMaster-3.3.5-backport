@@ -13,10 +13,13 @@ local Container = TSM.LibTSMWoW:Include("API.Container")
 local ItemInfo = TSM.LibTSMService:Include("Item.ItemInfo")
 local CustomString = TSM.LibTSMTypes:Include("CustomString")
 local BagTracking = TSM.LibTSMService:Include("Inventory.BagTracking")
+local ClientInfo = TSM.LibTSMWoW:Include("Util.ClientInfo")
+local DefaultUI = TSM.LibTSMWoW:Include("UI.DefaultUI")
 local private = {
 	settings = nil,
 	ignoreDB = nil,
 	potentialValueDB = nil,
+	potentialValueDirty = true,
 }
 
 
@@ -50,7 +53,12 @@ function Sell.OnInitialize(settingsDB)
 		:AddUniqueStringField("itemString")
 		:AddNumberField("potentialValue")
 		:Commit()
-	BagTracking.RegisterCallback(private.UpdatePotentialValueDB)
+	-- 3.3.5 perf: BAG_UPDATE на этом клиенте сыплется очень часто (лут, крафт,
+	-- почта), а полная пересборка potentialValueDB с вычислением qsMarketValue
+	-- по каждому distinct-предмету дорога. Пересобираем только когда окно
+	-- вендора открыто; вне вендора лишь помечаем данные устаревшими.
+	BagTracking.RegisterCallback(private.HandleBagUpdate)
+	DefaultUI.RegisterMerchantVisibleCallback(private.HandleMerchantShow, true)
 end
 
 function Sell.IgnoreItemSession(itemString)
@@ -127,15 +135,26 @@ function Sell.ResetBagsQuery(query)
 	BagTracking.FilterQueryBags(query)
 	query:NotEqual("ignoreSession", true)
 		:NotEqual("ignorePermanent", true)
-		:Equal("isBound", false)
-		:GreaterThan("vendorSell", 0)
+	-- 3.3.5 fix (зеркально Mailing/Send.lua): флаг isBound в slotDB ненадёжен —
+	-- он true для множества обычных предметов (у нативного container API нет
+	-- bound-флага), из-за чего Quick Sell прятал валидные предметы. Применяем
+	-- фильтр только на клиентах, которые его реально сообщают; BoP-предметы
+	-- вендорятся в любом случае, так что риск лишь в лишних строках списка.
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Equal("isBound", false)
+	end
+	query:GreaterThan("vendorSell", 0)
 end
 
 function Sell.SellItem(itemString, includeSoulbound)
 	local query = BagTracking.CreateQueryBags()
 		:OrderBy("slotId", true)
 		:Select("bag", "slot", "itemString")
-		:Equal("isBound", false)
+	-- 3.3.5 fix: см. комментарий в ResetBagsQuery — ненадёжный isBound не должен
+	-- мешать продаже валидных предметов
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) and not includeSoulbound then
+		query:Equal("isBound", false)
+	end
 	for _, bag, slot, bagItemString in query:Iterator() do
 		if itemString == bagItemString and ItemString.Get(Container.GetItemLink(bag, slot)) == itemString then
 			Container.UseItem(bag, slot)
@@ -150,13 +169,31 @@ end
 -- Private Helper Functions
 -- ============================================================================
 
+function private.HandleBagUpdate()
+	if DefaultUI.IsMerchantVisible() then
+		private.UpdatePotentialValueDB()
+	else
+		private.potentialValueDirty = true
+	end
+end
+
+function private.HandleMerchantShow()
+	if private.potentialValueDirty then
+		private.UpdatePotentialValueDB()
+	end
+end
+
 function private.UpdatePotentialValueDB()
+	private.potentialValueDirty = false
 	private.potentialValueDB:TruncateAndBulkInsertStart()
 	local query = BagTracking.CreateQueryBags()
 		:OrderBy("slotId", true)
 		:Select("itemString")
 		:Distinct("itemString")
-		:Equal("isBound", false)
+	-- 3.3.5 fix: см. комментарий в ResetBagsQuery про ненадёжный isBound
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		query:Equal("isBound", false)
+	end
 	for _, itemString in query:Iterator() do
 		local value = CustomString.GetValue(private.settings.qsMarketValue, itemString)
 		if value then
