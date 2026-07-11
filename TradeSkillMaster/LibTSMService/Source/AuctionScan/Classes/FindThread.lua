@@ -45,7 +45,8 @@ end)
 ---@param auction AuctionSubRow The sub row to find
 ---@param callback fun(...: any) The result callback
 ---@param noSeller boolean Ignore seller names
-function FindThread.StartFindAuction(auctionScan, auction, callback, noSeller)
+---@param forceQuery boolean? Skip the current-page shortcut (3.3.5 buy-after-buy fix)
+function FindThread.StartFindAuction(auctionScan, auction, callback, noSeller, forceQuery)
 	wipe(private.startArgs)
 	private.startArgs.auctionScan = auctionScan
 	-- 3.3.5: создаём snapshot данных subRow, потому что он может быть released до старта thread
@@ -98,6 +99,7 @@ function FindThread.StartFindAuction(auctionScan, auction, callback, noSeller)
 	private.startArgs.auction = snapshot
 	private.startArgs.callback = callback
 	private.startArgs.noSeller = noSeller
+	private.startArgs.forceQuery = forceQuery
 	private.startTimer:RunForTime(0)
 end
 
@@ -124,8 +126,8 @@ end
 -- ============================================================================
 
 ---@param auctionScan AuctionScanManager
-function private.FindThread(auctionScan, row, noSeller)
-	return auctionScan:_FindAuctionThreaded(row, noSeller)
+function private.FindThread(auctionScan, row, noSeller, forceQuery)
+	return auctionScan:_FindAuctionThreaded(row, noSeller, forceQuery)
 end
 
 function private.StartThread()
@@ -145,7 +147,7 @@ function private.StartThread()
 	end
 	private.isRunning = true
 	private.callback = private.startArgs.callback
-	Threading.Start(private.threadId, private.startArgs.auctionScan, private.startArgs.auction, private.startArgs.noSeller)
+	Threading.Start(private.threadId, private.startArgs.auctionScan, private.startArgs.auction, private.startArgs.noSeller, private.startArgs.forceQuery)
 	wipe(private.startArgs)
 end
 

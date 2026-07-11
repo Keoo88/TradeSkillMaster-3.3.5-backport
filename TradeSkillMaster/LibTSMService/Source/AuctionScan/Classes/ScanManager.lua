@@ -280,8 +280,9 @@ end
 ---@param auction AuctionSubRow The sub row to find
 ---@param callback fun(...: any) The result callback
 ---@param noSeller boolean Ignore seller names
-function AuctionScanManager:FindAuction(auction, callback, noSeller)
-	FindThread.StartFindAuction(self, auction, callback, noSeller)
+---@param forceQuery boolean? Skip the current-page shortcut and do a fresh per-item query (3.3.5)
+function AuctionScanManager:FindAuction(auction, callback, noSeller, forceQuery)
+	FindThread.StartFindAuction(self, auction, callback, noSeller, forceQuery)
 end
 
 ---Checks if an auciton can be bid on.
@@ -437,13 +438,13 @@ end
 -- ============================================================================
 
 ---@private
-function AuctionScanManager:_FindAuctionThreaded(findSubRow, noSeller)
+function AuctionScanManager:_FindAuctionThreaded(findSubRow, noSeller, forceQuery)
 	assert(Threading.IsThreadContext())
 	wipe(self._findResult)
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		return self:_FindAuctionThreadedRetail(findSubRow)
 	else
-		return self:_FindAuctionThreadedClassic(findSubRow, noSeller)
+		return self:_FindAuctionThreadedClassic(findSubRow, noSeller, forceQuery)
 	end
 end
 
@@ -628,7 +629,7 @@ function AuctionScanManager.__private:_DoBrowseSearchHelper(query, future)
 	return result
 end
 
-function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
+function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller, forceQuery)
 	self._cancelled = false
 	-- 3.3.5: ждём CanSendQuery с таймаутом.
 	local waitStart = GetTime and GetTime() or 0
@@ -657,7 +658,14 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 		-- which buy fine. Browse keeps the fast current-page shortcut (resolveSellers
 		-- is true for the classic Browse scan, false for Sniper).
 		wipe(self._findResult)
-		if self:_FindAuctionOnCurrentPage(row, passFlag) then
+		-- 3.3.5 buy-after-buy fix: forceQuery skips the current-page shortcut. After a
+		-- successful buyout the client "list" is stale relative to the server (bought
+		-- rows removed / reflowed), so a shortcut match returns a client index the
+		-- server resolves to a DIFFERENT auction and silently rejects. All 3 retries
+		-- were hitting the same stale page -> "Failed to buy" x3 and the lot dropped.
+		-- The fresh per-item query below resyncs the list, exactly like the scan's own
+		-- later re-discovery (which always bought the lot fine).
+		if not forceQuery and self:_FindAuctionOnCurrentPage(row, passFlag) then
 			-- 3.3.5 sniper buyout fix (part 5): bid into the EXISTING live "list" with NO
 			-- preceding query, exactly like the Browse tab / default UI (both buy fine).
 			-- Every attempt that fired a fresh QueryAuctionItems right before
@@ -829,7 +837,7 @@ function AuctionScanManager.__private:_FindAuctionThreadedClassic(row, noSeller)
 				break
 			end
 		end
-		-- pass 1 ничего не дал — если был с seller-strict и owner не "?", делаем pass 2
+		-- pass 1 ничего не дал — если был с seller-strict и owner не "?", дел��ем pass 2
 		-- Если passFlag (noSeller) уже true — выходим, ничего не нашли
 		if passFlag then
 			break

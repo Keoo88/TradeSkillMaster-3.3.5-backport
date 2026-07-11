@@ -50,6 +50,13 @@ local SEARCH_AH_NOT_READY_RETRY_DELAY = 0.5
 local SEARCH_MISSING_INFO_RETRY_DELAY = 0.5
 local FUTURE_FAILED_RETRY_DELAY = 0.1
 local SORT_RETRY_DELAY = 0.5
+-- 3.3.5 perf: бюджет времени (мс) на обработку browse-страницы за один кадр.
+-- Без него цикл ограничивался только числом pending-предметов: если данные
+-- всех лотов были в кэше, страница целиком (сотни/тысячи лотов на ядрах с
+-- крупными страницами / GetAll) обрабатывалась за один кадр — каждый лот
+-- это дорогие C-вызовы GetAuctionItemInfo/GetAuctionItemLink. Это давало
+-- многосекундные фризы на каждом поиске.
+local BROWSE_PROCESS_TIME_BUDGET_MS = 25
 
 
 
@@ -727,14 +734,30 @@ function private.CheckBrowseResults()
 				tremove(private.browsePendingIndexes, i)
 			end
 		end
+		-- 3.3.5 perf: обрабатываем не дольше BROWSE_PROCESS_TIME_BUDGET_MS за
+		-- вызов; при исчерпании бюджета продолжаем на следующем кадре через
+		-- updateTimer (retryTimer от FSM с его 0.5с задержкой перекрывается
+		-- более быстрым тиком updateTimer — EV_BROWSE_RESULTS_UPDATED вернёт
+		-- нас в ST_BROWSE_CHECKING немедленно)
+		local budgetStart = debugprofilestop()
+		local budgetExhausted = false
 		local index = private.browseIndex
 		while index <= numAuctions and #private.browsePendingIndexes < 50 do
 			if not private.ProcessBrowseResultClassic(index) then
 				tinsert(private.browsePendingIndexes, index)
 			end
 			index = index + 1
+			if debugprofilestop() - budgetStart > BROWSE_PROCESS_TIME_BUDGET_MS then
+				budgetExhausted = index <= numAuctions
+				break
+			end
 		end
 		private.browseIndex = index
+		if budgetExhausted then
+			TSMDBG.Log("Scanner", "Browse page budget exhausted at index %d/%d; continuing next frame", private.browseIndex - 1, numAuctions)
+			private.updateTimer:RunForFrames(1)
+			return false
+		end
 		if private.browseIndex <= numAuctions or #private.browsePendingIndexes > 0 then
 			return false
 		end
