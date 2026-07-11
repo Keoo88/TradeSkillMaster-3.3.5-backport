@@ -17,10 +17,15 @@ local private = {
 	pendingIndex = nil,
 	pendingQuantity = 0,
 	pendingItemString = nil,
+	retryCount = 0,
 }
 local FIRST_BUY_TIMEOUT = 5
 local FIRST_BUY_TIMEOUT_PER_STACK = 1
 local CONSECUTIVE_BUY_TIMEOUT = 5
+-- 3.3.5 fix: cap timeout-driven re-buys. If loot messages are lost/filtered the old
+-- code re-bought the full remaining quantity every timeout, forever, massively
+-- overbuying until the merchant window was closed.
+local MAX_BUY_RETRIES = 2
 
 
 
@@ -45,6 +50,7 @@ end)
 ---@param quantity number The quantity to buy
 ---@param itemString? string The intended item (guards against the merchant slot shifting)
 function Buy.BuyIndex(index, quantity, itemString)
+	private.retryCount = 0
 	private.BuyIndex(index, quantity, itemString)
 end
 
@@ -68,26 +74,33 @@ function private.BuyIndex(index, quantity, itemString)
 		end
 		index = resolvedIndex
 	end
-	local maxStack = Merchant.GetItemMaxStack(index)
+	-- 3.3.5 fix: the "buy unit" delivered by BuyMerchantItem(index, 1) is the merchant
+	-- BATCH size (4th return of GetMerchantItemInfo: 200 for ammo, 5 for water, 1 for
+	-- singly-sold items) - NOT GetMerchantItemMaxStack, which is the item's inventory
+	-- stack size (e.g. 20 for potions = the max count for ONE call). Using maxStack
+	-- here made the code think one call delivered 20 potions when it delivered 1, so
+	-- pendingQuantity never drained and the timeout kept drip-buying every few seconds
+	-- until the merchant window was closed (asked for 20, got 40+).
+	local _, batchSize = Merchant.GetItemInfo(index)
+	batchSize = (batchSize and batchSize > 0) and batchSize or 1
 	private.ClearPendingContext()
 	private.pendingIndex = index
 	private.pendingItemString = itemString
 	-- 3.3.5: BuyMerchantItem(index, count) с count > 1 на приватных серверах
 	-- отклоняется фейковыми ошибками ("inventory full", "not enough money").
-	-- Эмулируем дефолтный UI: count=1 за вызов, повторяем stacksToBuy раз.
-	-- maxStack = размер одного "buy unit" (200 для патронов, 1 для оружия).
-	local stacksToBuy = math.ceil(quantity / max(maxStack, 1))
-	local numStacks = 0
-	for _ = 1, stacksToBuy do
+	-- Эмулируем дефолтный UI: count=1 за вызов, повторяем batchesToBuy раз.
+	local batchesToBuy = math.ceil(quantity / batchSize)
+	local numBatches = 0
+	for _ = 1, batchesToBuy do
 		Merchant.BuyItem(index, 1)
-		private.pendingQuantity = private.pendingQuantity + maxStack
-		numStacks = numStacks + 1
-		if numStacks > 100 then
+		private.pendingQuantity = private.pendingQuantity + batchSize
+		numBatches = numBatches + 1
+		if numBatches > 100 then
 			break
 		end
 	end
-	Log.Info("Buying %d of %d (%d stacks)", private.pendingQuantity, index, numStacks)
-	private.timeoutTimer:RunForTime(numStacks * FIRST_BUY_TIMEOUT_PER_STACK + FIRST_BUY_TIMEOUT)
+	Log.Info("Buying %d of %d (%d batches)", private.pendingQuantity, index, numBatches)
+	private.timeoutTimer:RunForTime(numBatches * FIRST_BUY_TIMEOUT_PER_STACK + FIRST_BUY_TIMEOUT)
 end
 
 function private.LootHandler(msgItemLink, quantity)
@@ -106,6 +119,8 @@ function private.LootHandler(msgItemLink, quantity)
 	end
 	Log.Info("Got CHAT_MSG_LOOT(%s) with a quantity of %s (%d pending)", msgItemLink, quantity, private.pendingQuantity)
 	private.pendingQuantity = private.pendingQuantity - quantity
+	-- Progress is being made, so reset the retry counter
+	private.retryCount = 0
 	if private.pendingQuantity <= 0 then
 		-- We're done
 		private.ClearPendingContext()
@@ -118,6 +133,16 @@ function private.LootHandler(msgItemLink, quantity)
 end
 
 function private.BuyTimeout()
+	if not private.pendingIndex then
+		return
+	end
+	private.retryCount = private.retryCount + 1
+	if private.retryCount > MAX_BUY_RETRIES then
+		-- Loot messages likely lost/filtered; re-buying again risks overbuying.
+		Log.Warn("Buy timed out %d times with %d still pending; giving up", private.retryCount - 1, private.pendingQuantity)
+		private.ClearPendingContext()
+		return
+	end
 	Log.Warn("Retrying buying (%d, %d)", private.pendingIndex, private.pendingQuantity)
 	private.BuyIndex(private.pendingIndex, private.pendingQuantity, private.pendingItemString)
 end
