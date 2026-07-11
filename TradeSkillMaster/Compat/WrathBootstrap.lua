@@ -425,6 +425,22 @@ _G.LE_GAME_ERR_NOT_IN_AUCTION_HOUSE   = _G.LE_GAME_ERR_NOT_IN_AUCTION_HOUSE   or
 _G.LE_GAME_ERR_AUCTION_ENOUGH_ITEMS   = _G.LE_GAME_ERR_AUCTION_ENOUGH_ITEMS   or _G.ERR_AUCTION_ENOUGH_ITEMS   or "ERR_AUCTION_ENOUGH_ITEMS"
 
 -- ============================================================================
+-- LE_ITEM_BIND_* constants (Legion+ enums; Enum.ItemBind values).
+-- LibTSMWoW API/Item.lua вычисляет isBoP через `bindType == LE_ITEM_BIND_ON_ACQUIRE`;
+-- на 3.3.5 GetItemInfo не возвращает bindType (nil), и без этих констант сравнение
+-- `nil == nil` давало true — КАЖДЫЙ предмет кэшировался как soulbound (isBOP=1),
+-- из-за чего Auctioning-строки тултипа никогда не показывались.
+-- Полный набор: реальный bindType восстанавливается tooltip-сканом (API/Item.lua),
+-- которому нужны все значения Enum.ItemBind.
+-- ============================================================================
+
+_G.LE_ITEM_BIND_NONE       = _G.LE_ITEM_BIND_NONE       or 0 -- Enum.ItemBind.None
+_G.LE_ITEM_BIND_ON_ACQUIRE = _G.LE_ITEM_BIND_ON_ACQUIRE or 1 -- Enum.ItemBind.OnAcquire
+_G.LE_ITEM_BIND_ON_EQUIP   = _G.LE_ITEM_BIND_ON_EQUIP   or 2 -- Enum.ItemBind.OnEquip
+_G.LE_ITEM_BIND_ON_USE     = _G.LE_ITEM_BIND_ON_USE     or 3 -- Enum.ItemBind.OnUse
+_G.LE_ITEM_BIND_QUEST      = _G.LE_ITEM_BIND_QUEST      or 4 -- Enum.ItemBind.Quest
+
+-- ============================================================================
 -- GetAutoCompleteRealms — retail API, used by External/EmbeddedLibs/LibRealmInfo.
 -- ============================================================================
 

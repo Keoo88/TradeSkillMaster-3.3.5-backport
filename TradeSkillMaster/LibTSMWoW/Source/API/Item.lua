@@ -12,6 +12,8 @@ local private = {
 	cacheRequestTimes = {},
 	cacheRequestWindowStart = 0,
 	cacheRequestWindowCount = 0,
+	bindScanTooltip = nil,
+	bindTypeCache = {}, -- map: itemId -> bindType (tooltip-scan fallback result)
 }
 local MAX_STACK_SIZE = 4000
 -- 3.3.5 backport fix: 700 is a retail value; the highest item level in WotLK is 284
@@ -40,12 +42,67 @@ local MAX_CACHE_REQUESTS_PER_SEC = 20
 ---@return boolean? isCraftingReagent
 function Item.GetInfo(item)
 	local name, link, quality, itemLevel, minLevel, _, _, maxStack, _, _, vendorSell, _, _, bindType, expansionId, _, isCraftingReagent = C_Item.GetItemInfo(item)
+	-- 3.3.5 backport fix: GetItemInfo has no bindType return on Wrath (always nil),
+	-- which made every item non-BoP after the LE_ITEM_BIND_* polyfill. Recover the
+	-- real bind type by scanning a hidden tooltip (cached per item ID).
+	if bindType == nil and link then
+		bindType = private.GetBindTypeFromTooltip(link)
+	end
 	local isBoP = (bindType == LE_ITEM_BIND_ON_ACQUIRE or bindType == LE_ITEM_BIND_QUEST) and 1 or 0
 	-- Some items (i.e. "i:117356::1:573") produce an negative min level
 	minLevel = minLevel and max(minLevel, 0) or nil
 	-- Some items (i.e. "i:40752" produce a very high max stack, so cap it)
 	maxStack = maxStack and min(maxStack, MAX_STACK_SIZE) or nil
 	return name, link, quality, itemLevel, minLevel, maxStack, vendorSell, isBoP, expansionId, isCraftingReagent
+end
+
+---Determines an item's bind type by scanning a hidden tooltip (3.3.5 fallback).
+---Only called for items already in the client cache (GetItemInfo returned a link),
+---so SetHyperlink is safe and the tooltip renders fully and synchronously.
+---@param link string The item link (from GetItemInfo, guaranteed valid)
+---@return number bindType LE_ITEM_BIND_* value (0 = none)
+function private.GetBindTypeFromTooltip(link)
+	local itemId = tonumber(strmatch(link, "item:(%d+)"))
+	if not itemId then
+		return LE_ITEM_BIND_NONE or 0
+	end
+	local cached = private.bindTypeCache[itemId]
+	if cached ~= nil then
+		return cached
+	end
+	if not private.bindScanTooltip then
+		private.bindScanTooltip = CreateFrame("GameTooltip", "TSMBindScanTooltip", UIParent, "GameTooltipTemplate")
+	end
+	local tooltip = private.bindScanTooltip
+	tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+	tooltip:ClearLines()
+	local ok = pcall(tooltip.SetHyperlink, tooltip, link)
+	local bindType = LE_ITEM_BIND_NONE or 0
+	if ok then
+		-- The bind line is always near the top of the tooltip (right after the
+		-- name / quest item line); scanning the first 4 lines is sufficient and
+		-- avoids false positives from other addons' appended lines.
+		for i = 2, min(tooltip:NumLines(), 4) do
+			local lineText = _G["TSMBindScanTooltipTextLeft"..i]
+			lineText = lineText and lineText:GetText()
+			if lineText == ITEM_BIND_ON_PICKUP or lineText == ITEM_SOULBOUND then
+				bindType = LE_ITEM_BIND_ON_ACQUIRE or 1
+				break
+			elseif lineText == ITEM_BIND_QUEST then
+				bindType = LE_ITEM_BIND_QUEST or 4
+				break
+			elseif lineText == ITEM_BIND_ON_EQUIP then
+				bindType = LE_ITEM_BIND_ON_EQUIP or 2
+				break
+			elseif lineText == ITEM_BIND_ON_USE then
+				bindType = LE_ITEM_BIND_ON_USE or 3
+				break
+			end
+		end
+	end
+	tooltip:Hide()
+	private.bindTypeCache[itemId] = bindType
+	return bindType
 end
 
 ---Gets precached item info.
