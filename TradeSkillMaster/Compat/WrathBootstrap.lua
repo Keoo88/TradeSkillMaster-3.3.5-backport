@@ -464,7 +464,16 @@ if type(_G.GetAddOnEnableState) ~= "function" then
 		local n1, n2 = name_or_character, maybe_name
 		local name = (type(n2) == "string" and n2 ~= "" and n2) or (type(n1) == "string" and n1) or nil
 		if not name then return 0 end
-		return _G.IsAddOnLoaded(name) and 2 or 1
+		-- Loaded implies enabled.
+		if _G.IsAddOnLoaded(name) then return 2 end
+		-- Enabled-but-not-yet-loaded (load-on-demand, or an addon that loads AFTER
+		-- this one alphabetically — the backport loads Accounting/Crafting after the
+		-- core) must still report "All" (2), not "Some" (1), or Addon.IsEnabled()
+		-- would wrongly treat it as disabled. Use GetAddOnInfo's enabled flag.
+		-- pcall: GetAddOnInfo errors on unknown addon names on 3.3.5.
+		local ok, _, _, _, enabled = pcall(_G.GetAddOnInfo, name)
+		if not ok then return 0 end
+		return enabled and 2 or 0
 	end
 end
 if _G.C_AddOns then
