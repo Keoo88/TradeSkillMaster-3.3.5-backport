@@ -120,7 +120,7 @@ based on your groups, and empty your mailbox with a single click.
 ### Credits
 
 - Original addon: **TradeSkillMaster Team**
-- WotLK 3.3.5a backport: **Keoo**
+- WotLK 3.3.5a backport: **Keoo** **Liqweed**
 
 ---
 
@@ -218,4 +218,4 @@ based on your groups, and empty your mailbox with a single click.
 ### Благодарности
 
 - Оригинальный аддон: **Команда TradeSkillMaster**
-- Бэкпорт под WotLK 3.3.5a: **Keoo**
+- Бэкпорт под WotLK 3.3.5a: **Keoo** **Liqweed**
