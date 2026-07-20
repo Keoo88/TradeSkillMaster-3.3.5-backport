@@ -195,6 +195,25 @@ function ItemInfo.ItemNameToItemString(name)
 	return result
 end
 
+---Count item names in the cache that contain a substring (case-insensitive).
+---@param word string The substring to match
+---@param maxCount? number Stop counting once this many matches are found
+---@return number
+function ItemInfo.CountNamesContaining(word, maxCount)
+	local count = 0
+	local query = private.cache:NewQuery()
+		:Select("itemString")
+		:Contains("name", word)
+	for _ in query:Iterator() do
+		count = count + 1
+		if maxCount and count > maxCount then
+			break
+		end
+	end
+	query:Release(maxCount and count > maxCount)
+	return count
+end
+
 ---Get the name.
 ---@param item string The item
 ---@return string?
