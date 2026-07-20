@@ -45,9 +45,11 @@ local private = {
 	filtersTemp = {},
 	queryTemp = {},
 	itemLocation = ItemLocation:CreateEmpty(),
+	lastSortKey = nil,
 }
 local API_TIMEOUT = 5
 local GET_ALL_TIMEOUT = 30
+local CLASSIC_LIST_TIMEOUT = 2.5
 local SEARCH_QUERY_THROTTLE_INTERVAL = 60
 local SEARCH_QUERY_THROTTLE_MAX = 100
 local EMPTY_SORTS_TABLE = {}
@@ -723,6 +725,11 @@ function AuctionHouseWrapper.SetSort(useEmptySorts, usePriceSort)
 		return true
 	end
 
+	local sortKey = usePriceSort and "price" or (useEmptySorts and "empty" or "browse")
+	if sortKey == private.lastSortKey then
+		return true
+	end
+
 	-- In 3.3.5, just clear the sort and proceed immediately
 	SortAuctionClearSort("list")
 
@@ -741,6 +748,7 @@ function AuctionHouseWrapper.SetSort(useEmptySorts, usePriceSort)
 		SortAuctionApplySort("list")
 	end
 
+	private.lastSortKey = sortKey
 	return true
 end
 
@@ -903,6 +911,8 @@ function APIWrapper:_HandleAPICall(...)
 		timeout = 0
 	elseif (self._name == "QueryAuctionItems" and select(10, ...)) or self._name == "ReplicateItems" then
 		timeout = GET_ALL_TIMEOUT
+	elseif self._name == "QueryAuctionItems" and not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		timeout = CLASSIC_LIST_TIMEOUT
 	else
 		timeout = API_TIMEOUT
 	end
@@ -1017,6 +1027,7 @@ function private.AuctionHouseOpened()
 end
 
 function private.AuctionHouseClosed()
+	private.lastSortKey = nil
 	for _, wrapper in pairs(private.wrappers) do
 		wrapper:CancelIfPending()
 	end
