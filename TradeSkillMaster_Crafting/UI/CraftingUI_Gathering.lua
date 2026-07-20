@@ -17,6 +17,7 @@ local private = {
 	settings = nil,
 	frame = nil,
 	query = nil,
+	frameWasShown = false,
 }
 local SOURCE_LIST = {
 	"bank",
@@ -162,6 +163,7 @@ function private.GetGatheringFrame()
 			)
 		)
 		:SetScript("OnUpdate", private.FrameOnUpdate)
+		:SetScript("OnShow", private.FrameOnShow)
 		:SetScript("OnHide", private.FrameOnHide)
 	private.frame = frame
 	return frame
@@ -245,9 +247,17 @@ function private.FrameOnUpdate(frame)
 	private.ContextChangedCallback()
 end
 
+function private.FrameOnShow(frame)
+	private.frameWasShown = true
+end
+
 function private.FrameOnHide(frame)
 	if frame ~= private.frame then return end
+	-- 3.3.5: фрейм создаётся hidden, OnHide ловит initial hide — игнорируем,
+	-- пока не было реального OnShow (см. MailingUI_Inbox).
+	if not private.frameWasShown then return end
 	private.frame = nil
+	private.frameWasShown = false
 	private.query:Release()
 	private.query = nil
 end
