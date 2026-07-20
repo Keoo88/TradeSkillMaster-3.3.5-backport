@@ -58,6 +58,7 @@
     <Script file="Source\AuctionScan\Classes\Util.lua" />
     <Script file="Source\AuctionScan\Classes\SubRow.lua" />
     <Script file="Source\AuctionScan\Classes\Row.lua" />
+    <Script file="Source\AuctionScan\Classes\MarketValue.lua" />
     <Script file="Source\AuctionScan\Classes\Scanner.lua" />
     <Script file="Source\AuctionScan\Classes\Query.lua" />
     <Script file="Source\AuctionScan\Classes\QueryUtil.lua" />
