@@ -178,7 +178,7 @@ function AuctioningBagScrollTable.__private:_HandleQueryUpdate()
 		local selected = self._selectedItems[autoBaseItemString]
 		private.selectedTemp[autoBaseItemString] = selected
 		tinsert(self._data.selected, selected and TextureAtlas.GetTextureLink("iconPack.14x14/Checkmark/Default") or "")
-		tinsert(self._data.item, "|T"..itemTexture..":0|t "..(UIUtils.GetDisplayItemName(autoBaseItemString) or "?"))
+		tinsert(self._data.item, Theme.GetItemIconLink(itemTexture).." "..(UIUtils.GetDisplayItemName(autoBaseItemString) or "?"))
 		tinsert(self._data.operation, firstOperation or Theme.GetColor("FEEDBACK_RED"):ColorText(L["Skipped: No assigned operation"]))
 		tinsert(self._data.group, Group.FormatPath(groupPath) or "")
 		tinsert(self._data.item_tooltip, autoBaseItemString)

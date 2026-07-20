@@ -133,7 +133,7 @@ function VendorBuyScrollTable.__private:_HandleQueryUpdate()
 			end
 		end
 		texture = texture or "Interface\\Icons\\INV_Misc_QuestionMark"
-		local itemText = "|T"..texture..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?")
+		local itemText = Theme.GetItemIconLink(texture).." "..(UIUtils.GetDisplayItemName(itemString) or "?")
 		if numAvailable > 0 then
 			itemText = itemText..Theme.GetColor("FEEDBACK_RED"):ColorText(" ("..numAvailable..")")
 		elseif numAvailable ~= -1 then

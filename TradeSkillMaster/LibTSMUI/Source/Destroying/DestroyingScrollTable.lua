@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local Table = LibTSMUI:From("LibTSMUtil"):Include("Lua.Table")
 local COL_INFO = {
 	item = {
@@ -135,7 +136,7 @@ function DestroyingScrollTable.__private:_HandleQueryUpdate()
 	local hasExistingSelection, nextSelectionSlotId = false, nil
 	for _, row in self._query:Iterator() do
 		local itemString, quantity, name, slotId = row:GetFields("itemString", "quantity", "name", "slotId")
-		tinsert(self._data.item, "|T"..(ItemInfo.GetTexture(itemString) or 0)..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?"))
+		tinsert(self._data.item, Theme.GetItemIconLink(ItemInfo.GetTexture(itemString) or 0).." "..(UIUtils.GetDisplayItemName(itemString) or "?"))
 		tinsert(self._data.item_tooltip, itemString)
 		tinsert(self._data.num, quantity)
 		tinsert(self._actionIcon, "iconPack.12x12/Hide")

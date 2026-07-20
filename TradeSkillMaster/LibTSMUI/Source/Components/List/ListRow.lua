@@ -133,6 +133,12 @@ function ListRow:Acquire(parentFrame, height, frameEventHandler)
 		:CallMethod(frame.highlightSelectedHover, "TSMSubscribeColorTexture")
 end
 
+---Sets the row height.
+---@param height number
+function ListRow:SetHeight(height)
+	self._frame:SetHeight(height)
+end
+
 function ListRow:Release()
 	for _, cancellable in pairs(self._cancellables) do
 		cancellable:Cancel()

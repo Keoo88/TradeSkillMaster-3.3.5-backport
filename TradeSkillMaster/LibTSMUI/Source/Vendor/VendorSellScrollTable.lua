@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local Money = LibTSMUI:From("LibTSMUtil"):Include("UI.Money")
 local COL_INFO = {
 	item = {
@@ -129,7 +130,7 @@ function VendorSellScrollTable.__private:_HandleQueryUpdate()
 		local itemString, vendorSell, potentialValue = row:GetFields("itemString", "vendorSell", "potentialValue")
 		local texture = ItemInfo.GetTexture(itemString) or "Interface\\Icons\\INV_Misc_QuestionMark"
 		local displayName = UIUtils.GetDisplayItemName(itemString) or "?"
-		tinsert(self._data.item, "|T"..texture..":0|t "..displayName)
+		tinsert(self._data.item, Theme.GetItemIconLink(texture).." "..displayName)
 		tinsert(self._data.item_tooltip, itemString)
 		tinsert(self._data.vendorSell, vendorSell > 0 and Money.ToStringForUI(vendorSell) or "")
 		tinsert(self._data.potential, Money.ToStringForUI(potentialValue))

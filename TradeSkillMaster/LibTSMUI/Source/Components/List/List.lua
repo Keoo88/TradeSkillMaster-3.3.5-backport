@@ -152,6 +152,14 @@ end
 function List:Draw()
 	self.__super:Draw()
 
+	local newRowHeight = Theme.GetListRowHeight()
+	if self._rowHeight ~= newRowHeight then
+		self._rowHeight = newRowHeight
+		for _, row in ipairs(self._rowElements) do
+			row:SetHeight(newRowHeight)
+		end
+	end
+
 	-- In 3.3.5 SetPoint-anchored frames return 0 from GetHeight/GetWidth
 	-- Explicitly size the scroll frames so rows can be created correctly
 	local frameW = self:_GetDimension("WIDTH")

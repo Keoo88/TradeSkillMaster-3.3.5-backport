@@ -130,19 +130,10 @@ function Tooltip.Show(parent, data, noWrapping, xOffset)
 	GameTooltip:Show()
 	private.currentParent = parent
 	if showCompare then
-		-- Third-party addons (i.e. Bistooltip) may re-trigger the parent's OnEnter script
-		-- from within their own MODIFIER_STATE_CHANGED handler, causing Tooltip.Show() to be
-		-- called again without a Tooltip.Hide() in between, so don't assume we're not
-		-- already registered for the event.
-		if not private.registeredEvent then
-			private.registeredEvent = true
-			Event.Register("MODIFIER_STATE_CHANGED", private.UpdateCompareState)
-		end
+		assert(not private.registeredEvent)
+		private.registeredEvent = true
+		Event.Register("MODIFIER_STATE_CHANGED", private.UpdateCompareState)
 		private.UpdateCompareState()
-	elseif private.registeredEvent then
-		-- The tooltip was re-shown with non-item data without being hidden first
-		Event.Unregister("MODIFIER_STATE_CHANGED", private.UpdateCompareState)
-		private.registeredEvent = false
 	end
 end
 

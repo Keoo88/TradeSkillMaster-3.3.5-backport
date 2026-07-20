@@ -157,7 +157,7 @@ end
 function LedgerResaleScrollTable.__protected:_LoadDeferredRowData(dataIndex)
 	local dbRow = self._query:GetNthResult(dataIndex)
 	local itemString, bought, avgBuyPrice, sold, avgSellPrice, avgProfit, totalProfit, profitPct = dbRow:GetFields("itemString", "bought", "avgBuyPrice", "sold", "avgSellPrice", "avgProfit", "totalProfit", "profitPct")
-	self._data.item[dataIndex] = "|T"..(ItemInfo.GetTexture(itemString) or 0)..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?")
+	self._data.item[dataIndex] = Theme.GetItemIconLink(ItemInfo.GetTexture(itemString) or 0).." "..(UIUtils.GetDisplayItemName(itemString) or "?")
 	self._data.item_tooltip[dataIndex] = itemString
 	self._data.bought[dataIndex] = bought
 	self._data.avgBuyPrice[dataIndex] = Money.ToStringForUI(avgBuyPrice)

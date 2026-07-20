@@ -24,6 +24,7 @@ Text:_ExtendStateSchema()
 	:AddStringField("font", "BODY_BODY1")
 	:AddStringField("justifyH", "LEFT")
 	:AddStringField("justifyV", "MIDDLE")
+	:AddBooleanField("wordWrap", true)
 	:AddNumberField("textSpacing", 0)
 	:Commit()
 
@@ -61,6 +62,10 @@ function Text:Acquire()
 		:CallMethod(frame.text, "SetJustifyH")
 	self._state:PublisherForKeyChange("justifyV")
 		:CallMethod(frame.text, "SetJustifyV")
+
+	-- Set word wrap
+	self._state:PublisherForKeyChange("wordWrap")
+		:CallMethod(frame.text, "SetWordWrap")
 
 	-- Set the text color
 	self._state:PublisherForKeyChange("color")
@@ -137,6 +142,14 @@ function Text:SetJustifyV(justifyV)
 	return self
 end
 
+---Sets whether the text wraps to multiple lines.
+---@param wrap boolean Whether word wrap is enabled
+---@return Text
+function Text:SetWordWrap(wrap)
+	self._state.wordWrap = wrap
+	return self
+end
+
 ---Set the text.
 ---@param text string|number The text
 ---@return Text
@@ -185,6 +198,14 @@ end
 ---@return number
 function Text:GetStringHeight()
 	return self:_GetBaseFrame().text:GetStringHeight()
+end
+
+function Text:Draw()
+	self.__super:Draw()
+	local fontKey = self._state.font
+	if fontKey then
+		self:_GetBaseFrame().text:TSMSetFont(fontKey)
+	end
 end
 
 

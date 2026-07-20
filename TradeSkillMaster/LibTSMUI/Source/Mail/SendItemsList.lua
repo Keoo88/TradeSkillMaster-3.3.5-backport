@@ -132,7 +132,7 @@ function SendItemsList.__private:_HandleQueryUpdate()
 	end
 	for _, row in self._query:Iterator() do
 		local itemString, quantity = row:GetFields("itemString", "quantity")
-		tinsert(self._data.item, "|T"..(ItemInfo.GetTexture(itemString) or "Interface\\Icons\\INV_Misc_QuestionMark")..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?"))
+		tinsert(self._data.item, Theme.GetItemIconLink(ItemInfo.GetTexture(itemString) or "Interface\\Icons\\INV_Misc_QuestionMark").." "..(UIUtils.GetDisplayItemName(itemString) or "?"))
 		tinsert(self._data.itemTooltip, itemString)
 		tinsert(self._data.quantity, quantity)
 	end

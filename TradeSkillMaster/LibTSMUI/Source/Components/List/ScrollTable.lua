@@ -28,7 +28,7 @@ local private = {
 	headerInfoCellTemp = {},
 	existingSourcesTemp = {},
 }
-local ROW_HEIGHT = 20
+local ROW_HEIGHT = Theme.GetListRowHeight
 local HEADER_HEIGHT = 22
 local HEADER_LINE_HEIGHT = 2
 local HEADER_LINE_WIDTH = 2
@@ -167,7 +167,7 @@ function ScrollTable:__init(colInfo)
 end
 
 function ScrollTable:Acquire()
-	self.__super:Acquire(ROW_HEIGHT)
+	self.__super:Acquire(ROW_HEIGHT())
 	self._lineBottom:TSMSubscribeColorTexture("ACTIVE_BG")
 	self._lineTop:TSMSubscribeColorTexture("ACTIVE_BG")
 	self._header:TSMSubscribeBackdropColor("FRAME_BG")
@@ -184,6 +184,7 @@ function ScrollTable:Release()
 	self._sortDisabled = false
 	self._settings = nil
 	self._settingsKey = nil
+	self._cachedItemIconSize = nil
 	wipe(self._actionIcon)
 	wipe(self._createGroupsData)
 	for _, tbl in pairs(self._data) do
@@ -208,6 +209,11 @@ function ScrollTable:SetSettings(settings, key)
 	return self
 end
 
+function ScrollTable:Draw()
+	self:_SyncScrollTableTheme()
+	self.__super:Draw()
+end
+
 
 -- ============================================================================
 -- Protected/Private Class Methods
@@ -224,6 +230,35 @@ end
 
 function ScrollTable.__protected:_GetSettingsValue()
 	return self._settings[self._settingsKey]
+end
+
+function ScrollTable.__private:_SyncScrollTableTheme()
+	local iconSize = Theme.GetItemIconSize()
+	if self._cachedItemIconSize ~= iconSize then
+		self._cachedItemIconSize = iconSize
+		for _, tbl in pairs(self._data) do
+			for i, value in ipairs(tbl) do
+				if type(value) == "string" and strmatch(value, "^|T") then
+					tbl[i] = Theme.RefreshItemIconLinkInText(value)
+				end
+			end
+		end
+	end
+	if not self._settings or not self._settingsKey then
+		return
+	end
+	local rowHeight = Theme.GetListRowHeight()
+	for _, row in ipairs(self._rowElements) do
+		for _, colSettings in ipairs(self:_GetSettingsValue().cols) do
+			if not colSettings.hidden then
+				local id = colSettings.id
+				local info = self._customSourceItemStringDataCol and self:_GetCustomStringSourceKey(id) and EXTRA_SOURCE_TEXT_INFO or self._colInfo[id]
+				local text = row:GetText(id)
+				text:SetHeight(rowHeight)
+				text:TSMSetFont(info.font)
+			end
+		end
+	end
 end
 
 function ScrollTable.__protected:_GetSettingsDefaultReadOnly()
@@ -515,7 +550,7 @@ function ScrollTable.__protected:_HandleRowAcquired(row)
 		local id = colSettings.id
 		local info = self._customSourceItemStringDataCol and self:_GetCustomStringSourceKey(id) and EXTRA_SOURCE_TEXT_INFO or self._colInfo[id]
 		local text = row:AddText(id)
-		text:SetHeight(ROW_HEIGHT)
+		text:SetHeight(ROW_HEIGHT())
 		text:TSMSetFont(info.font)
 		text:SetJustifyH(info.justifyH)
 		if info.hasTooltip then
@@ -883,7 +918,7 @@ function ScrollTable.__protected:_HandleMoreDialogClick(menuDialog, id1, id2, id
 			tinsert(settings.cols, { id = id3, width = EXTRA_SOURCE_DEFAULT_WIDTH })
 			for _, row in ipairs(self._rowElements) do
 				local text = row:AddText(id3)
-				text:SetHeight(ROW_HEIGHT)
+				text:SetHeight(ROW_HEIGHT())
 				text:TSMSetFont(EXTRA_SOURCE_TEXT_INFO.font)
 				text:SetJustifyH(EXTRA_SOURCE_TEXT_INFO.justifyH)
 			end

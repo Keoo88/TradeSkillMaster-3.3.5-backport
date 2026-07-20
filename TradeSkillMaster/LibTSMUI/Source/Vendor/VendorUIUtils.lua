@@ -55,7 +55,7 @@ function private.GetAdditionalCostText(index, numStacks, costColor)
 			local suffixStr = currencyName == HONOR_POINTS and ":14:14:00:0:64:64:0:40:0:40|t" or ":12|t"
 			tinsert(private.costTextTemp, quantity.." |T"..currencyTexture..suffixStr)
 		else
-			tinsert(private.costTextTemp, quantity.." |T"..ItemInfo.GetTexture(itemString)..":12|t")
+			tinsert(private.costTextTemp, quantity.." "..Theme.GetItemIconLink(ItemInfo.GetTexture(itemString)))
 		end
 	end
 	local text = table.concat(private.costTextTemp, " ")

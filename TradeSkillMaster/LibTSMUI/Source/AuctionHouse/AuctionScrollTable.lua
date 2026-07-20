@@ -158,6 +158,7 @@ function AuctionScrollTable:__init(colInfo)
 	self._lastFullUpdateTime = 0
 	self._updateDataPending = false
 	self._updateThrottleTimer = nil
+	self._batchUpdateMode = false
 
 	self._header.cells.pct:TSMSetScript("OnEnter", self:__closure("_HandlePctHeaderEnter"))
 	self._header.cells.pct:TSMSetScript("OnLeave", self:__closure("_HandlePctHeaderLeave"))
@@ -165,6 +166,7 @@ end
 
 function AuctionScrollTable:Release()
 	if self._auctionScan then
+		self:SetBatchUpdateMode(false)
 		self._auctionScan:RemoveResultsUpdateCallback(self:__closure("_UpdateData"))
 		self._auctionScan:SetNextSearchItemFunction(nil)
 		self._auctionScan:SetScript("OnCurrentSearchChanged", nil)
@@ -177,6 +179,7 @@ function AuctionScrollTable:Release()
 	end
 	self._lastFullUpdateTime = 0
 	self._updateDataPending = false
+	self._batchUpdateMode = false
 	wipe(self._expanded)
 	wipe(self._rawData)
 	wipe(self._rowByItem)
@@ -209,6 +212,7 @@ function AuctionScrollTable:SetAuctionScan(auctionScan)
 		return self
 	end
 	if self._auctionScan then
+		self:SetBatchUpdateMode(false)
 		self._auctionScan:RemoveResultsUpdateCallback(self:__closure("_UpdateData"))
 		self._auctionScan:SetNextSearchItemFunction(nil)
 		self._auctionScan:SetScript("OnCurrentSearchChanged", nil)
@@ -238,7 +242,7 @@ end
 function AuctionScrollTable:SetMarketValueFunction(func)
 	if func ~= self._marketValueFunc then
 		self._marketValueFunc = func
-		self:_UpdateData()
+		self:_UpdateData(nil, nil, nil, true)
 	end
 	return self
 end
@@ -311,7 +315,26 @@ end
 
 --TODO: Remove this
 function AuctionScrollTable:UpdateData()
-	self:_UpdateData()
+	self:_UpdateData(nil, nil, nil, true)
+end
+
+---Batches per-page full table rebuilds until FlushBatchUpdate() is called.
+---@param enabled boolean
+---@return AuctionScrollTable
+function AuctionScrollTable:SetBatchUpdateMode(enabled)
+	if self._batchUpdateMode == (enabled and true or false) then
+		return self
+	end
+	self._batchUpdateMode = enabled and true or false
+	if not self._batchUpdateMode then
+		self:FlushBatchUpdate()
+	end
+	return self
+end
+
+---Applies a pending batched table rebuild immediately.
+function AuctionScrollTable:FlushBatchUpdate()
+	self:_FlushPendingUpdateData()
 end
 
 
@@ -321,12 +344,17 @@ end
 -- ============================================================================
 
 ---@param updatedRow AuctionRow
-function AuctionScrollTable.__protected:_UpdateData(_, _, updatedRow)
+function AuctionScrollTable.__protected:_UpdateData(_, _, updatedRow, forceImmediate)
 	if not self._auctionScan then
 		return
 	end
 	if updatedRow and self:_HandleUpdatedAuctionRow(updatedRow) then
 		-- Didn't need to do a full update
+		return
+	end
+	-- Gathering batch mode: defer full rebuilds until an explicit flush.
+	if self._batchUpdateMode and not forceImmediate then
+		self._updateDataPending = true
 		return
 	end
 	-- 3.3.5 perf: троттлинг полной пересборки (см. UPDATE_DATA_THROTTLE).
@@ -484,7 +512,7 @@ function AuctionScrollTable.__protected:_FlushPendingUpdateData()
 	end
 	self._updateDataPending = false
 	self._lastFullUpdateTime = 0
-	self:_UpdateData()
+	self:_UpdateData(nil, nil, nil, true)
 end
 
 ---@param updatedRow AuctionRow
@@ -721,7 +749,7 @@ function AuctionScrollTable.__protected:_SetDataForRow(index, row, isFirstSubRow
 		if not tex and rawLink and _G.GetItemIcon then tex = _G.GetItemIcon(rawLink) end
 		if tex then row._cachedTexture = tex end
 		tex = tex or row._cachedTexture
-		local itemTexturePrefix = tex and ("|T"..tex..":0|t ") or ""
+		local itemTexturePrefix = tex and (Theme.GetItemIconLink(tex).." ") or ""
 		local displayName = UIUtils.GetDisplayItemName(itemLink, not isFirstSubRow and SUB_ROW_TINT_PCT or nil)
 		if not displayName or displayName == "" then
 			displayName = itemLink and itemLink:match("%[(.-)%]") or tostring(baseItemString)
@@ -761,7 +789,7 @@ function AuctionScrollTable.__protected:_SetDataForRow(index, row, isFirstSubRow
 		-- Кешируем найденную текстуру в Row, чтобы не терять между rerender
 		if tex then row._cachedTexture = tex end
 		tex = tex or row._cachedTexture
-		local itemTexturePrefix = tex and ("|T"..tex..":0|t ") or ""
+		local itemTexturePrefix = tex and (Theme.GetItemIconLink(tex).." ") or ""
 		local displayName = UIUtils.GetDisplayItemName(itemString)
 		if not displayName or displayName == "" then
 			if fallbackLink then

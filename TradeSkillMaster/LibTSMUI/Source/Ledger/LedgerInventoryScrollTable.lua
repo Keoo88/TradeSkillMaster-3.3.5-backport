@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local Math = LibTSMUI:From("LibTSMUtil"):Include("Lua.Math")
 local Money = LibTSMUI:From("LibTSMUtil"):Include("UI.Money")
 local COL_INFO = {
@@ -150,7 +151,7 @@ end
 function LedgerInventoryScrollTable.__protected:_LoadDeferredRowData(dataIndex)
 	local dbRow = self._query:GetNthResult(dataIndex)
 	local levelItemString, totalQuantity, bagQuantity, totalBankQuantity, mailQuantity, altQuantity, guildQuantity, auctionQuantity, totalValue = dbRow:GetFields("levelItemString", "totalQuantity", "bagQuantity", "totalBankQuantity", "mailQuantity", "altQuantity", "guildQuantity", "auctionQuantity", "totalValue")
-	self._data.item[dataIndex] = "|T"..(ItemInfo.GetTexture(levelItemString) or "Interface\\Icons\\INV_Misc_QuestionMark")..":0|t "..(UIUtils.GetDisplayItemName(levelItemString) or "?")
+	self._data.item[dataIndex] = Theme.GetItemIconLink(ItemInfo.GetTexture(levelItemString) or "Interface\\Icons\\INV_Misc_QuestionMark").." "..(UIUtils.GetDisplayItemName(levelItemString) or "?")
 	self._data.item_tooltip[dataIndex] = levelItemString
 	self._data.totalItems[dataIndex] = totalQuantity
 	self._data.bags[dataIndex] = bagQuantity

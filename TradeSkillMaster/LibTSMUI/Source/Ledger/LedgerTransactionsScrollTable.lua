@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local Money = LibTSMUI:From("LibTSMUtil"):Include("UI.Money")
 local COL_INFO = {
 	item = {
@@ -190,7 +191,7 @@ end
 function LedgerTransactionsScrollTable.__protected:_LoadDeferredRowData(dataIndex)
 	local dbRow = self._query:GetNthResult(dataIndex)
 	local itemString, otherPlayer, source, stackSize, auctions, price, total, recordTime = dbRow:GetFields("filteredItemString", "otherPlayer", "source", "stackSize", "auctions", "price", "total", "time")
-	self._data.item[dataIndex] = "|T"..(ItemInfo.GetTexture(itemString) or 0)..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?")
+	self._data.item[dataIndex] = Theme.GetItemIconLink(ItemInfo.GetTexture(itemString) or 0).." "..(UIUtils.GetDisplayItemName(itemString) or "?")
 	self._data.item_tooltip[dataIndex] = itemString
 	self._data.player[dataIndex] = otherPlayer
 	self._data.type[dataIndex] = source

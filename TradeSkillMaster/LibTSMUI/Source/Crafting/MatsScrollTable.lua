@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local Math = LibTSMUI:From("LibTSMUtil"):Include("Lua.Math")
 local Money = LibTSMUI:From("LibTSMUtil"):Include("UI.Money")
 local COL_INFO = {
@@ -152,7 +153,7 @@ function MatsScrollTable.__private:_HandleQueryUpdate()
 				texture = _G.GetItemIcon(itemId)
 			end
 		end
-		tinsert(self._data.name, "|T"..(texture or "Interface\\Icons\\INV_Misc_QuestionMark")..":0|t "..(UIUtils.GetDisplayItemName(itemString) or name))
+		tinsert(self._data.name, Theme.GetItemIconLink(texture or "Interface\\Icons\\INV_Misc_QuestionMark").." "..(UIUtils.GetDisplayItemName(itemString) or name))
 		tinsert(self._data.name_tooltip, itemString)
 		tinsert(self._data.price, self.DEFERRED_DATA)
 		tinsert(self._data.professions, professions)

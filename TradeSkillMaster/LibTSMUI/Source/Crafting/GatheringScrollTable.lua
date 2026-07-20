@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local COL_INFO = {
 	name = {
 		title = NAME,
@@ -107,7 +108,7 @@ function GatheringScrollTable.__private:_HandleQueryUpdate()
 				texture = _G.GetItemIcon(itemId)
 			end
 		end
-		tinsert(self._data.name, "|T"..(texture or "Interface\\Icons\\INV_Misc_QuestionMark")..":0|t "..(UIUtils.GetDisplayItemName(itemString) or name))
+		tinsert(self._data.name, Theme.GetItemIconLink(texture or "Interface\\Icons\\INV_Misc_QuestionMark").." "..(UIUtils.GetDisplayItemName(itemString) or name))
 		tinsert(self._data.name_tooltip, itemString)
 		tinsert(self._data.sources, sourcesDisplayStr)
 		tinsert(self._data.have, numHave)

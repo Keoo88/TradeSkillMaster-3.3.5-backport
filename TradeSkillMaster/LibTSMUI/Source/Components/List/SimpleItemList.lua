@@ -10,7 +10,7 @@ local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
 local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
-local ROW_HEIGHT = 20
+local ROW_HEIGHT = Theme.GetListRowHeight
 
 
 
@@ -36,7 +36,7 @@ function SimpleItemList:__init()
 end
 
 function SimpleItemList:Acquire()
-	self.__super:Acquire(ROW_HEIGHT)
+	self.__super:Acquire(ROW_HEIGHT())
 end
 
 function SimpleItemList:Release()
@@ -91,7 +91,7 @@ function SimpleItemList.__private:_HandleQueryUpdate()
 	wipe(self._itemString)
 	for _, row in self._query:Iterator() do
 		local itemString = row:GetFields("itemString")
-		tinsert(self._text, "|T"..(ItemInfo.GetTexture(itemString) or 0)..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?"))
+		tinsert(self._text, Theme.GetItemIconLink(ItemInfo.GetTexture(itemString) or 0).." "..(UIUtils.GetDisplayItemName(itemString) or "?"))
 		tinsert(self._itemString, itemString)
 	end
 	self:_SetNumRows(#self._text)
@@ -102,7 +102,7 @@ end
 function SimpleItemList.__protected:_HandleRowAcquired(row)
 	local colSpacing = Theme.GetColSpacing()
 	local text = row:AddText("text")
-	text:SetHeight(ROW_HEIGHT)
+	text:SetHeight(ROW_HEIGHT())
 	text:TSMSetFont("ITEM_BODY3")
 	text:SetJustifyH("LEFT")
 	text:SetPoint("LEFT", colSpacing / 2, 0)
@@ -112,7 +112,10 @@ end
 ---@param row ListRow
 function SimpleItemList.__protected:_HandleRowDraw(row)
 	local dataIndex = row:GetDataIndex()
-	row:GetText("text"):SetText(self._text[dataIndex])
+	local text = row:GetText("text")
+	text:SetHeight(ROW_HEIGHT())
+	text:TSMSetFont("ITEM_BODY3")
+	text:SetText(self._text[dataIndex])
 end
 
 ---@param row ListRow

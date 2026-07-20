@@ -10,6 +10,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local Money = LibTSMUI:From("LibTSMUtil"):Include("UI.Money")
 local COL_INFO = {
 	qty = {
@@ -112,7 +113,7 @@ function VendorBuybackScrollTable.__private:_HandleQueryUpdate()
 	for _, row in self._query:Iterator() do
 		local quantity, itemString, price = row:GetFields("quantity", "itemString", "price")
 		tinsert(self._data.qty, quantity)
-		tinsert(self._data.item, "|T"..ItemInfo.GetTexture(itemString)..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?"))
+		tinsert(self._data.item, Theme.GetItemIconLink(ItemInfo.GetTexture(itemString)).." "..(UIUtils.GetDisplayItemName(itemString) or "?"))
 		tinsert(self._data.item_tooltip, itemString)
 		tinsert(self._data.cost, Money.ToStringForUI(price))
 		self._createGroupsData[itemString] = L["Vendoring"].." - "..L["Buyback"]

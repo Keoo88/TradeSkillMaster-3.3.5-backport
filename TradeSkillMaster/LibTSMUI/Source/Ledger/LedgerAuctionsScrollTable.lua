@@ -9,6 +9,7 @@ local L = LibTSMUI.Locale.GetTable()
 local UIElements = LibTSMUI:Include("Util.UIElements")
 local UIUtils = LibTSMUI:Include("Util.UIUtils")
 local ItemInfo = LibTSMUI:From("LibTSMService"):Include("Item.ItemInfo")
+local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local COL_INFO = {
 	item = {
 		title = L["Item"],
@@ -160,7 +161,7 @@ function LedgerAuctionsScrollTable.__private:_HandleQueryUpdate()
 	wipe(self._createGroupsData)
 	for _, row in self._query:Iterator() do
 		local itemString, player, stackSize, auctions, recordTime = row:GetFields("filteredItemString", "player", "stackSize", "auctions", "time")
-		tinsert(self._data.item, "|T"..(ItemInfo.GetTexture(itemString) or 0)..":0|t "..(UIUtils.GetDisplayItemName(itemString) or "?"))
+		tinsert(self._data.item, Theme.GetItemIconLink(ItemInfo.GetTexture(itemString) or 0).." "..(UIUtils.GetDisplayItemName(itemString) or "?"))
 		tinsert(self._data.item_tooltip, itemString)
 		tinsert(self._data.player, player)
 		tinsert(self._data.stackSize, stackSize)

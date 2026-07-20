@@ -188,7 +188,7 @@ function CraftsScrollTable.__private:_HandleQueryUpdate()
 				texture = _G.GetItemIcon(itemId)
 			end
 		end
-		tinsert(self._data.craftName, "|T"..(texture or "Interface\\Icons\\INV_Misc_QuestionMark")..":0|t "..(UIUtils.GetDisplayItemName(itemString) or name))
+		tinsert(self._data.craftName, Theme.GetItemIconLink(texture or "Interface\\Icons\\INV_Misc_QuestionMark").." "..(UIUtils.GetDisplayItemName(itemString) or name))
 		tinsert(self._data.craftName_tooltip, itemString)
 		tinsert(self._data.operation, firstOperation)
 		tinsert(self._data.bags, bagQuantity or "0")

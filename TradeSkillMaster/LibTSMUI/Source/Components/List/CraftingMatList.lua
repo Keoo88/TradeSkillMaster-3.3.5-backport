@@ -21,8 +21,8 @@ local Theme = LibTSMUI:From("LibTSMService"):Include("UI.Theme")
 local private = {
 	optionalMatTemp = {},
 }
-local ROW_HEIGHT = 20
-local ICON_SIZE = 12
+local ROW_HEIGHT = Theme.GetListRowHeight
+local ICON_SIZE = Theme.GetItemIconSize
 local ICON_SPACING = 4
 local CONCENTRATION_ICON = "Interface\\ICONS\\UI_Concentration"
 
@@ -56,7 +56,7 @@ function CraftingMatList:__init()
 end
 
 function CraftingMatList:Acquire()
-	self.__super:Acquire(ROW_HEIGHT)
+	self.__super:Acquire(ROW_HEIGHT())
 end
 
 function CraftingMatList:Release()
@@ -183,18 +183,18 @@ function CraftingMatList.__protected:_HandleRowAcquired(row)
 	-- Add the icon
 	local icon = row:AddTexture("icon")
 	icon:SetDrawLayer("ARTWORK", 1)
-	icon:SetWidth(ICON_SIZE)
-	icon:SetHeight(ICON_SIZE)
+	icon:SetWidth(ICON_SIZE())
+	icon:SetHeight(ICON_SIZE())
 
 	-- Add the item text
 	local item = row:AddText("item")
-	item:SetHeight(ROW_HEIGHT)
+	item:SetHeight(ROW_HEIGHT())
 	item:TSMSetFont("ITEM_BODY3")
 	item:SetJustifyH("LEFT")
 
 	-- Add the quantity text
 	local qty = row:AddText("qty")
-	qty:SetHeight(ROW_HEIGHT)
+	qty:SetHeight(ROW_HEIGHT())
 	qty:TSMSetFont("TABLE_TABLE1")
 	qty:SetJustifyH("RIGHT")
 
@@ -215,13 +215,21 @@ end
 
 ---@param row ListRow
 function CraftingMatList.__private:_DrawRowItem(row, text, icon)
-	row:GetText("item"):SetText(text)
-	row:GetTexture("icon"):SetTexture(icon)
+	local iconTexture = row:GetTexture("icon")
+	iconTexture:SetWidth(ICON_SIZE())
+	iconTexture:SetHeight(ICON_SIZE())
+	iconTexture:SetTexture(icon)
+	local item = row:GetText("item")
+	item:SetHeight(ROW_HEIGHT())
+	item:TSMSetFont("ITEM_BODY3")
+	item:SetText(text)
 end
 
 ---@param row ListRow
 function CraftingMatList.__private:_DrawRowQty(row, bagQuantity, quantity)
 	local qty = row:GetText("qty")
+	qty:SetHeight(ROW_HEIGHT())
+	qty:TSMSetFont("TABLE_TABLE1")
 	if quantity == 0 then
 		qty:SetText("")
 		qty:SetWidth(4)

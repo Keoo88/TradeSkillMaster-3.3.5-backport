@@ -78,6 +78,7 @@ local STATE_SCHEMA = Reactive.CreateStateSchema("AUCTION_BUY_SCAN_STATE")
 	-- 3.3.5: marker that current findResult is a sentinel from the click-handler
 	-- (subRow selected but no real find performed yet). Cleared once a real find runs.
 	:AddBooleanField("findDeferred", false)
+	:AddBooleanField("isGatheringScan", false)
 	:Commit()
 
 
@@ -314,12 +315,16 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		end
 		manager:ProcessAction("ACTION_RESET_STATE")
 		state.searchContext = searchContext
+		state.isGatheringScan = searchContext:GetGatheringResultsFunc() ~= nil
 		assert(not state.auctionScan)
 		state.auctionScan = AuctionScan.GetManager()
 			:SetUIManager(manager)
 			:SetResolveSellers(resolveSellers)
 			:SetAction("OnProgressUpdate", "ACTION_SCAN_PROGRESS_UPDATED")
 			:SetAction("OnNumItemsChanged", "ACTION_SCAN_NUM_ITEMS_CHANGED")
+		if state.isGatheringScan then
+			state.auctionScan:SetAction("OnQueryDone", "ACTION_GATHERING_QUERY_DONE")
+		end
 		searchContext:StartThread(manager:CallbackToProcessAction("ACTION_SCAN_COMPLETE"), state.auctionScan)
 		searchContext:OnStateChanged("SCANNING")
 	elseif action == "ACTION_RESET_STATE" then
@@ -345,14 +350,21 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 		state.numBought = 0
 		state.numBid = 0
 		state.numConfirmed = 0
+		if state.auctionScrollTable then
+			state.auctionScrollTable:SetBatchUpdateMode(false)
+		end
 		if state.auctionScan then
 			state.auctionScan:Release()
 			state.auctionScan = nil
 		end
+		state.isGatheringScan = false
 		self._scanPausedForSelection = false
 		manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
 	elseif action == "ACTION_SET_SCROLL_TABLE" then
 		local auctionScrollTable = ...
+		if state.auctionScrollTable and state.auctionScrollTable ~= auctionScrollTable then
+			state.auctionScrollTable:SetBatchUpdateMode(false)
+		end
 		state.auctionScrollTable = auctionScrollTable
 		if not auctionScrollTable then
 			return manager:ProcessAction("ACTION_SET_SELECTED_AUCTION", nil)
@@ -364,6 +376,9 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 			:SetSelectionDisabledPublisher(state:PublisherForKeyChange("isConfirming"))
 			:SetManager(manager)
 			:SetAction("OnSelectionChanged", "ACTION_AUCTION_SELECTION_CHANGED")
+		if state.isGatheringScan then
+			auctionScrollTable:SetBatchUpdateMode(true)
+		end
 		if state.scanType == SCAN_TYPE.SNIPER then
 			auctionScrollTable:SetAction("OnRowRemoved", "ACTION_AUCTION_ROW_REMOVED")
 		end
@@ -487,9 +502,17 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				state.pausePending = nil
 			end
 		end
+	elseif action == "ACTION_GATHERING_QUERY_DONE" then
+		if state.auctionScrollTable then
+			state.auctionScrollTable:FlushBatchUpdate()
+		end
 	elseif action == "ACTION_SCAN_COMPLETE" then
 		local success = ...
 		assert(state.scanType == SCAN_TYPE.BROWSE)
+		if state.auctionScrollTable then
+			state.auctionScrollTable:FlushBatchUpdate()
+			state.auctionScrollTable:SetBatchUpdateMode(false)
+		end
 		AuctionScan.ReleaseLock(state.scanTypeName)
 		state.searchContext:OnStateChanged("RESULTS")
 		local postContext = self:_GetPostContext()

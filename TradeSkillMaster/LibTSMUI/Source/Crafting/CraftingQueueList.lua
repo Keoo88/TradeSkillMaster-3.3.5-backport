@@ -25,14 +25,14 @@ local private = {
 	categoryOrder = {},
 	sortSelf = nil,
 }
-local ROW_HEIGHT = 20
+local ROW_HEIGHT = Theme.GetListRowHeight
 local CATEGORY_SEP = "\001"
 local EXPANDER_TEXTURE_EXPANDED = "iconPack.12x12/Caret/Down"
 local EXPANDER_TEXTURE_COLLAPSED = "iconPack.12x12/Caret/Right"
 local EDIT_TEXTURE = "iconPack.12x12/Edit"
 local DELETE_TEXTURE = "iconPack.12x12/Close/Default"
 local ATTENTION_TEXTURE = "iconPack.12x12/Attention"
-local ICON_SIZE = 12
+local ICON_SIZE = Theme.GetItemIconSize
 local CONCENTRATION_ICON = "Interface\\ICONS\\UI_Concentration"
 
 
@@ -69,7 +69,7 @@ function CraftingQueueList:__init()
 end
 
 function CraftingQueueList:Acquire()
-	self.__super:Acquire(ROW_HEIGHT)
+	self.__super:Acquire(ROW_HEIGHT())
 end
 
 function CraftingQueueList:Release()
@@ -247,12 +247,12 @@ function CraftingQueueList.__protected:_HandleRowAcquired(row)
 
 	-- Item icon
 	local icon = row:AddTexture("icon")
-	icon:TSMSetSize(ICON_SIZE, ICON_SIZE)
+	icon:TSMSetSize(ICON_SIZE(), ICON_SIZE())
 	row:AddTooltipRegion("iconTooltip", icon, self:__closure("_GetIconTooltip"))
 
 	-- Name text
 	local name = row:AddText("name")
-	name:SetHeight(ROW_HEIGHT)
+	name:SetHeight(ROW_HEIGHT())
 	name:SetJustifyH("LEFt")
 	name:TSMSetFont("ITEM_BODY3")
 	row:AddTooltipRegion("nameTooltip", name, self:__closure("_GetNameTooltip"))
@@ -264,7 +264,7 @@ function CraftingQueueList.__protected:_HandleRowAcquired(row)
 
 	-- Quantity text
 	local qty = row:AddText("qty")
-	qty:SetHeight(ROW_HEIGHT)
+	qty:SetHeight(ROW_HEIGHT())
 	qty:SetJustifyH("RIGHT")
 	qty:TSMSetFont("TABLE_TABLE1")
 
@@ -290,6 +290,12 @@ function CraftingQueueList.__protected:_HandleRowDraw(row)
 	local actionTexture = row:GetTexture("action")
 	local iconTexture = row:GetTexture("icon")
 	local colSpacing = Theme.GetColSpacing()
+
+	nameText:SetHeight(ROW_HEIGHT())
+	nameText:TSMSetFont("ITEM_BODY3")
+	qtyText:SetHeight(ROW_HEIGHT())
+	qtyText:TSMSetFont("TABLE_TABLE1")
+	iconTexture:TSMSetSize(ICON_SIZE(), ICON_SIZE())
 
 	-- Update textures and the row layout based on the type of the row
 	iconTexture:TSMSetShown(not isCategory)

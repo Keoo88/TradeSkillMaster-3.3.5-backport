@@ -19,8 +19,8 @@ local private = {
 	dragContextTimer = DelayTimer.New("ITEM_LIST_DRAG_CONTEXT", DragContext.Clear),
 	prevSelectedTemp = {},
 }
-local ROW_HEIGHT = 20
-local ICON_SIZE = 12
+local ROW_HEIGHT = Theme.GetListRowHeight
+local ICON_SIZE = Theme.GetItemIconSize
 local ICON_SPACING = 4
 local INDENT_WIDTH = 8
 local MOVE_FRAME_PADDING = 8
@@ -60,7 +60,7 @@ function ItemList:__init()
 end
 
 function ItemList:Acquire()
-	self.__super:Acquire(ROW_HEIGHT)
+	self.__super:Acquire(ROW_HEIGHT())
 	self._moveFrame = UIElements.New("Frame", self._id.."_MoveFrame")
 		:SetLayout("VERTICAL")
 		:SetHeight(20)
@@ -369,8 +369,8 @@ function ItemList.__protected:_HandleRowAcquired(row)
 	-- Add the icon
 	local icon = row:AddTexture("icon")
 	icon:SetDrawLayer("ARTWORK", 1)
-	icon:SetWidth(ICON_SIZE)
-	icon:SetHeight(ICON_SIZE)
+	icon:SetWidth(ICON_SIZE())
+	icon:SetHeight(ICON_SIZE())
 
 	-- Add the text
 	local text = row:AddText("text")
@@ -468,8 +468,13 @@ end
 
 ---@param row ListRow
 function ItemList.__private:_DrawItemRowIconAndText(row, uuid)
-	row:GetTexture("icon"):SetTexture(self._icon[uuid])
-	row:GetText("text"):SetText(self._text[uuid])
+	local icon = row:GetTexture("icon")
+	icon:SetWidth(ICON_SIZE())
+	icon:SetHeight(ICON_SIZE())
+	icon:SetTexture(self._icon[uuid])
+	local text = row:GetText("text")
+	text:TSMSetFont("ITEM_BODY3")
+	text:SetText(self._text[uuid])
 end
 
 ---@param row ListRow
@@ -561,7 +566,7 @@ function ItemList.__private:_HandleRowDragStart(row)
 	local itemString = self._itemString[uuid]
 	local text = self._text[uuid]
 	self._moveFrame:Show()
-	self._moveFrame:SetHeight(ROW_HEIGHT)
+	self._moveFrame:SetHeight(ROW_HEIGHT())
 	local moveFrameText = self._moveFrame:GetElement("text")
 	wipe(self._dragItems)
 	if self:GetNumSelected() == 0 then

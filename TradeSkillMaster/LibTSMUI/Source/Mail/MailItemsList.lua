@@ -97,7 +97,7 @@ function MailItemsList.__private:_HandleQueryUpdate()
 			tinsert(self._tooltipData, false)
 		else
 			local texture = ItemInfo.GetTexture(itemLink) or "Interface\\Icons\\INV_Misc_QuestionMark"
-			local coloredItem = "|T"..texture..":0|t "..(UIUtils.GetDisplayItemName(itemLink) or "?")
+			local coloredItem = Theme.GetItemIconLink(texture).." "..(UIUtils.GetDisplayItemName(itemLink) or "?")
 			if quantity and quantity > 1 then
 				coloredItem = coloredItem..Theme.GetColor("FEEDBACK_YELLOW"):ColorText(" (x"..quantity..")")
 			end

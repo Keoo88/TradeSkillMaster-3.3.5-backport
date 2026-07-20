@@ -268,7 +268,7 @@ function MyAuctionsScrollTable.__private:_HandleQueryUpdate()
 	local hasExistingSelection, nextSelectionAuctionId = false, nil
 	for _, row in self._query:Iterator() do
 		local isSold, itemName, itemQuality, itemString, stackSize, duration, isPending, group, currentBid, highBidder, buyout, auctionId = row:GetFields("isSold", "itemName", "itemQuality", "itemString", "stackSize", "duration", "isPending", "group", "currentBid", "highBidder", "buyout", "auctionId")
-		local itemTexturePrefix = "|T"..(ItemInfo.GetTexture(itemString) or "Interface\\Icons\\INV_Misc_QuestionMark")..":0|t "
+		local itemTexturePrefix = Theme.GetItemIconLink(ItemInfo.GetTexture(itemString) or "Interface\\Icons\\INV_Misc_QuestionMark").." "
 		if isSold then
 			local color = Theme.GetColor("INDICATOR")
 			tinsert(self._data.item, itemTexturePrefix..color:ColorText(itemName))
