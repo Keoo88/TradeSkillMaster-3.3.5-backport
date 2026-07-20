@@ -17,6 +17,10 @@ local private = {
 	colorSets = {},
 	currentColorSetKey = nil,
 	currentFontSet = nil,
+	fontsLoaded = false,
+	appearanceFontFace = "",
+	fontScale = 1,
+	itemIconSize = 12,
 	streams = {},
 	publisherKey = {},
 	publishKeysTemp = {},
@@ -190,10 +194,6 @@ Theme:OnModuleLoad(function()
 	Table.SetReadOnly(PROFESSION_DIFFICULTY_COLORS)
 	Table.SetReadOnly(TSM_ITEM_QUALITY_COLORS)
 	Table.SetReadOnly(CONSTANTS)
-
-	-- Load fonts
-	-- TODO: eventually allow for different font sets?
-	private.EnsureFontSet()
 end)
 
 
@@ -249,9 +249,7 @@ function Theme.SetActiveColorSet(colorSetKey)
 	end
 	private.currentColorSetKey = colorSetKey
 	private.HandleColorChange(colorSetKey, nil)
-	for _, callback in ipairs(private.callbacks) do
-		callback()
-	end
+	private.NotifyChange()
 end
 
 ---Replaces a specific color within a theme (for user-generated themes)
@@ -268,9 +266,7 @@ function Theme.UpdateColor(colorSetKey, colorKey, r, g, b)
 	color:SetRGBA(r, g, b, 255)
 	private.HandleColorChange(colorSetKey, colorKey)
 	if colorSetKey == private.currentColorSetKey then
-		for _, callback in ipairs(private.callbacks) do
-			callback()
-		end
+		private.NotifyChange()
 	end
 end
 
@@ -374,6 +370,81 @@ function Theme.GetCraftedQualityColorKey(quality, useMidnightIcon)
 	return key
 end
 
+---Applies saved appearance font settings and rebuilds the active font set.
+---@param fontFace string LibSharedMedia font name, or "" for bundled / auto-detect
+---@param fontScale number Scale multiplier for all font roles
+---@param itemIconSize number Pixel size for item icons in lists and tables
+function Theme.ApplyAppearanceFonts(fontFace, fontScale, itemIconSize)
+	private.appearanceFontFace = fontFace or ""
+	private.fontScale = fontScale or 1
+	private.itemIconSize = itemIconSize or 12
+	private.RebuildFontSet()
+	private.NotifyChange()
+end
+
+---Gets the active font scale multiplier.
+---@return number
+function Theme.GetFontScale()
+	return private.fontScale
+end
+
+---Gets the configured item icon size in pixels.
+---@return number
+function Theme.GetItemIconSize()
+	return private.itemIconSize
+end
+
+---Gets the row height for lists and scroll tables that show item icons.
+---@return number
+function Theme.GetListRowHeight()
+	return max(ceil(20 * private.fontScale), private.itemIconSize + 8)
+end
+
+---Gets a chat/UI escape sequence for an item icon texture.
+---@param texture string|number The item texture path or file ID
+---@return string
+function Theme.GetItemIconLink(texture)
+	texture = texture or "Interface\\Icons\\INV_Misc_QuestionMark"
+	local size = private.itemIconSize
+	return "|T"..texture..":"..size..":"..size.."|t"
+end
+
+---Updates a cached cell/list string that starts with a TSM item icon escape sequence.
+---@param text string
+---@return string
+function Theme.RefreshItemIconLinkInText(text)
+	if not text or text == "" then
+		return text
+	end
+	local path, rest = strmatch(text, "^|T(.-):(%d+):(%d+)|t(.*)$")
+	if not path then
+		path, rest = strmatch(text, "^|T(.-):(%d+)|t(.*)$")
+	end
+	if path then
+		return Theme.GetItemIconLink(path)..rest
+	end
+	return text
+end
+
+---Gets display names and keys for the font face dropdown.
+---@return string[]
+---@return string[]
+function Theme.GetFontFaceList()
+	local items = { "Default" }
+	local keys = { "" }
+	local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+	if lsm and lsm.List then
+		local fonts = lsm:List("font")
+		if fonts then
+			for _, name in ipairs(fonts) do
+				tinsert(items, name)
+				tinsert(keys, name)
+			end
+		end
+	end
+	return items, keys
+end
+
 ---Resolves the font path the player is already using via LibSharedMedia.
 ---Prefers ElvUI's configured font so TSM visually matches the rest of the UI.
 ---Returns nil when LibSharedMedia is unavailable (e.g. no ElvUI), so callers
@@ -397,13 +468,27 @@ function private.GetSharedMediaFontPath()
 	return lsm:Fetch("font", fontName, true)
 end
 
----Builds the font path override table. When a SharedMedia font is available we
+---Builds a font path table that uses a single font file for all roles.
+---@param path string
+---@return table
+function private.BuildSingleFontPathTable(path)
+	local paths = {}
+	for _, alphabet in ipairs({ FontObject.ALPHABET.ROMAN, FontObject.ALPHABET.KOREAN, FontObject.ALPHABET.CHINESE, FontObject.ALPHABET.CYRILLIC }) do
+		paths[alphabet] = {}
+		for _, fontType in pairs(FontObject.TYPE) do
+			paths[alphabet][fontType] = path
+		end
+	end
+	return paths
+end
+
+---Builds the default font path override table. When a SharedMedia font is available we
 ---use it for body and table text in both Roman and Cyrillic locales -- this pulls
 ---a font that is already loaded and (for ruRU) actually has Cyrillic glyphs,
 ---instead of the bundled Latin-only Montserrat/Roboto. Otherwise we fall back to
 ---the bundled TSM fonts.
 ---@return table
-function private.GetFontPaths()
+function private.GetDefaultFontPaths()
 	local path = private.GetSharedMediaFontPath()
 	if not path then
 		return OVERRIDE_FONT_PATHS
@@ -424,6 +509,60 @@ function private.GetFontPaths()
 	return paths
 end
 
+---Builds the font path override table for the active appearance font face.
+---@return table
+function private.GetFontPaths()
+	if private.appearanceFontFace ~= "" then
+		local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+		if lsm then
+			local path = lsm:Fetch("font", private.appearanceFontFace, true)
+			if path then
+				return private.BuildSingleFontPathTable(path)
+			end
+		end
+	end
+	return private.GetDefaultFontPaths()
+end
+
+---Rebuilds the active font set from appearance settings.
+function private.RebuildFontSet()
+	if not private.fontsLoaded then
+		FontObject.LoadPaths(private.GetFontPaths())
+		private.fontsLoaded = true
+	else
+		FontObject.UpdatePaths(private.GetFontPaths())
+	end
+	local scale = private.fontScale
+	local iconMinLineHeight = private.itemIconSize
+	local function scaled(size, lineHeight)
+		return floor(size * scale + 0.5), floor(lineHeight * scale + 0.5)
+	end
+	local function scaledWithIconLineHeight(size, lineHeight)
+		local scaledSize, scaledLineHeight = scaled(size, lineHeight)
+		scaledLineHeight = max(scaledLineHeight, iconMinLineHeight)
+		if scaledLineHeight < scaledSize then
+			scaledSize = scaledLineHeight
+		end
+		return scaledSize, scaledLineHeight
+	end
+	local tableSize, tableLineHeight = scaledWithIconLineHeight(12, 20)
+	private.currentFontSet = {
+		HEADING_H5 = FontObject.New(FontObject.TYPE.BODY_REGULAR, scaled(20, 28)),
+		BODY_BODY1 = FontObject.New(FontObject.TYPE.BODY_REGULAR, scaled(16, 24)),
+		BODY_BODY1_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, scaled(16, 24)),
+		BODY_BODY2 = FontObject.New(FontObject.TYPE.BODY_REGULAR, scaled(14, 20)),
+		BODY_BODY2_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, scaled(14, 20)),
+		BODY_BODY2_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, scaled(14, 20)),
+		BODY_BODY3 = FontObject.New(FontObject.TYPE.BODY_REGULAR, scaled(12, 20)),
+		BODY_BODY3_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, scaled(12, 20)),
+		ITEM_BODY1 = FontObject.New(FontObject.TYPE.ITEM, scaledWithIconLineHeight(16, 24)),
+		ITEM_BODY2 = FontObject.New(FontObject.TYPE.ITEM, scaledWithIconLineHeight(14, 20)),
+		ITEM_BODY3 = FontObject.New(FontObject.TYPE.ITEM, scaledWithIconLineHeight(12, 20)),
+		TABLE_TABLE1 = FontObject.New(FontObject.TYPE.TABLE, tableSize, tableLineHeight),
+		TABLE_TABLE1_OUTLINE = FontObject.New(FontObject.TYPE.TABLE, tableSize, tableLineHeight, "OUTLINE"),
+	}
+end
+
 ---Ensures the active font set has been initialized. On some clients (e.g. 3.3.5a)
 ---the module-load callback may not run before fonts are first needed, so we lazily
 ---build the font set on demand to avoid indexing a nil currentFontSet.
@@ -431,22 +570,7 @@ function private.EnsureFontSet()
 	if private.currentFontSet then
 		return
 	end
-	FontObject.LoadPaths(private.GetFontPaths())
-	private.currentFontSet = {
-		HEADING_H5 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 20, 28),
-		BODY_BODY1 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 16, 24),
-		BODY_BODY1_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, 16, 24),
-		BODY_BODY2 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 14, 20),
-		BODY_BODY2_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, 14, 20),
-		BODY_BODY2_BOLD = FontObject.New(FontObject.TYPE.BODY_BOLD, 14, 20),
-		BODY_BODY3 = FontObject.New(FontObject.TYPE.BODY_REGULAR, 12, 20),
-		BODY_BODY3_MEDIUM = FontObject.New(FontObject.TYPE.BODY_MEDIUM, 12, 20),
-		ITEM_BODY1 = FontObject.New(FontObject.TYPE.ITEM, 16, 24),
-		ITEM_BODY2 = FontObject.New(FontObject.TYPE.ITEM, 14, 20),
-		ITEM_BODY3 = FontObject.New(FontObject.TYPE.ITEM, 12, 20),
-		TABLE_TABLE1 = FontObject.New(FontObject.TYPE.TABLE, 12, 20),
-		TABLE_TABLE1_OUTLINE = FontObject.New(FontObject.TYPE.TABLE, 12, 20, "OUTLINE"),
-	}
+	private.RebuildFontSet()
 end
 
 ---Gets the font object from the current active font set.
@@ -524,4 +648,10 @@ end
 function private.HandlePublisherCancel(_, publisher)
 	assert(private.publisherKey[publisher])
 	private.publisherKey[publisher] = nil
+end
+
+function private.NotifyChange()
+	for _, callback in ipairs(private.callbacks) do
+		callback()
+	end
 end

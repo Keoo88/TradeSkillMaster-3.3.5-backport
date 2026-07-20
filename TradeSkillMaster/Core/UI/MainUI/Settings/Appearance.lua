@@ -51,7 +51,21 @@ local THEME_KEY_LABELS = {
 }
 local SETTING_TOOLTIPS = {
 	showTotalMoney = L["If eanbled, the gold amount in the top-right of TSM windows will be your total gold, rather than the gold on the current character."],
+	fontFace = L["The font used throughout TSM. Default uses bundled fonts or your UI addon's font when available."],
+	fontScale = L["Scales all TSM text sizes proportionally."],
+	itemIconSize = L["The size of item icons shown in TSM lists and tables."],
 }
+local FONT_SCALE_ITEMS = {
+	L["Small (85%)"],
+	L["Normal (100%)"],
+	L["Large (115%)"],
+	L["Extra Large (130%)"],
+}
+local FONT_SCALE_KEYS = { "0.85", "1", "1.15", "1.3" }
+local FONT_SCALE_VALUES = { 0.85, 1, 1.15, 1.3 }
+local ITEM_ICON_SIZE_ITEMS = { "12", "14", "16", "18" }
+local ITEM_ICON_SIZE_KEYS = { "12", "14", "16", "18" }
+local ITEM_ICON_SIZE_VALUES = { 12, 14, 16, 18 }
 
 
 
@@ -65,6 +79,9 @@ function Appearance.OnInitialize(settingsDB)
 		:AddKey("global", "coreOptions", "minimapIcon")
 		:AddKey("global", "appearanceOptions", "taskListBackgroundLock")
 		:AddKey("global", "appearanceOptions", "showTotalMoney")
+		:AddKey("global", "appearanceOptions", "fontFace")
+		:AddKey("global", "appearanceOptions", "fontScale")
+		:AddKey("global", "appearanceOptions", "itemIconSize")
 	TSM.MainUI.Settings.RegisterSettingPage(L["Appearance"], "middle", private.GetSettingsFrame)
 end
 
@@ -114,6 +131,66 @@ function private.GetSettingsFrame()
 					:SetText(L["Show total gold in header"])
 					:SetSettingInfo(private.settings, "showTotalMoney")
 					:SetTooltip(SETTING_TOOLTIPS.showTotalMoney)
+				)
+				:AddChild(UIElements.New("Spacer", "spacer"))
+			)
+		)
+		:AddChild(TSM.MainUI.Settings.CreateExpandableSection("Appearance", "typography", L["Typography"], L["Customize the font and item icon sizes used throughout TSM."])
+			:AddChild(UIElements.New("Frame", "fontFaceLabelLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(20)
+				:SetMargin(0, 0, 12, 4)
+				:AddChild(UIElements.New("Text", "fontFaceLabel")
+					:SetFont("BODY_BODY2_MEDIUM")
+					:SetText(L["Font"])
+				)
+			)
+			:AddChild(UIElements.New("Frame", "fontFaceLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(24)
+				:SetMargin(0, 0, 0, 12)
+				:AddChildrenWithFunction(private.AddFontFaceDropdown)
+			)
+			:AddChild(UIElements.New("Frame", "fontScaleLabelLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(20)
+				:SetMargin(0, 0, 0, 4)
+				:AddChild(UIElements.New("Text", "fontScaleLabel")
+					:SetFont("BODY_BODY2_MEDIUM")
+					:SetText(L["Font Size"])
+				)
+			)
+			:AddChild(UIElements.New("Frame", "fontScaleLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(24)
+				:SetMargin(0, 0, 0, 12)
+				:AddChild(UIElements.New("SelectionDropdown", "fontScaleDropdown")
+					:SetMargin(0, 16, 0, 0)
+					:SetItems(FONT_SCALE_ITEMS, FONT_SCALE_KEYS)
+					:SetSelectedItemByKey(private.GetFontScaleKey(private.settings.fontScale), true)
+					:SetScript("OnSelectionChanged", private.FontScaleOnSelectionChanged)
+					:SetTooltip(SETTING_TOOLTIPS.fontScale, "__parent")
+				)
+				:AddChild(UIElements.New("Spacer", "spacer"))
+			)
+			:AddChild(UIElements.New("Frame", "itemIconSizeLabelLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(20)
+				:SetMargin(0, 0, 0, 4)
+				:AddChild(UIElements.New("Text", "itemIconSizeLabel")
+					:SetFont("BODY_BODY2_MEDIUM")
+					:SetText(L["Item Icon Size"])
+				)
+			)
+			:AddChild(UIElements.New("Frame", "itemIconSizeLine")
+				:SetLayout("HORIZONTAL")
+				:SetHeight(24)
+				:AddChild(UIElements.New("SelectionDropdown", "itemIconSizeDropdown")
+					:SetMargin(0, 16, 0, 0)
+					:SetItems(ITEM_ICON_SIZE_ITEMS, ITEM_ICON_SIZE_KEYS)
+					:SetSelectedItemByKey(tostring(private.settings.itemIconSize), true)
+					:SetScript("OnSelectionChanged", private.ItemIconSizeOnSelectionChanged)
+					:SetTooltip(SETTING_TOOLTIPS.itemIconSize, "__parent")
 				)
 				:AddChild(UIElements.New("Spacer", "spacer"))
 			)
@@ -296,6 +373,73 @@ function private.TaskListLockOnValueChanged()
 	if TSM.UI.TaskListUI.IsVisible() then
 		TSM.UI.TaskListUI.UpdateFrame()
 	end
+end
+
+function private.AddFontFaceDropdown(frame)
+	local fontItems, fontKeys = Theme.GetFontFaceList()
+	fontItems[1] = L["Default"]
+	frame:AddChild(UIElements.New("SelectionDropdown", "fontFaceDropdown")
+		:SetMargin(0, 16, 0, 0)
+		:SetItems(fontItems, fontKeys)
+		:SetSelectedItemByKey(private.settings.fontFace, true)
+		:SetScript("OnSelectionChanged", private.FontFaceOnSelectionChanged)
+		:SetTooltip(SETTING_TOOLTIPS.fontFace, "__parent")
+	)
+	frame:AddChild(UIElements.New("Spacer", "spacer"))
+end
+
+function private.GetFontScaleKey(fontScale)
+	for i, value in ipairs(FONT_SCALE_VALUES) do
+		if value == fontScale then
+			return FONT_SCALE_KEYS[i]
+		end
+	end
+	return "1"
+end
+
+function private.ApplyAppearanceTypography()
+	Theme.ApplyAppearanceFonts(private.settings.fontFace, private.settings.fontScale, private.settings.itemIconSize)
+end
+
+function private.FontFaceOnSelectionChanged(dropdown)
+	local key = dropdown:GetSelectedItemKey()
+	if key == nil or key == private.settings.fontFace then
+		return
+	end
+	private.settings.fontFace = key
+	private.ApplyAppearanceTypography()
+end
+
+function private.FontScaleOnSelectionChanged(dropdown)
+	local key = dropdown:GetSelectedItemKey()
+	if not key then
+		return
+	end
+	local index = nil
+	for i, scaleKey in ipairs(FONT_SCALE_KEYS) do
+		if scaleKey == key then
+			index = i
+			break
+		end
+	end
+	if not index or FONT_SCALE_VALUES[index] == private.settings.fontScale then
+		return
+	end
+	private.settings.fontScale = FONT_SCALE_VALUES[index]
+	private.ApplyAppearanceTypography()
+end
+
+function private.ItemIconSizeOnSelectionChanged(dropdown)
+	local key = dropdown:GetSelectedItemKey()
+	if not key then
+		return
+	end
+	local size = tonumber(key)
+	if not size or size == private.settings.itemIconSize then
+		return
+	end
+	private.settings.itemIconSize = size
+	private.ApplyAppearanceTypography()
 end
 
 function private.ThemeButtonOnClick(buttonToggle)

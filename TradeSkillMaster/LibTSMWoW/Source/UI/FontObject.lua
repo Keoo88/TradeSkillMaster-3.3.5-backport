@@ -78,6 +78,17 @@ function FontObject.__static.LoadPaths(overrides)
 	end
 end
 
+---Updates font path data after the initial load (for live appearance font changes).
+---@param overrides table<EnumValue,table<EnumValue,string>> Overrides by alphabet and type
+function FontObject.__static.UpdatePaths(overrides)
+	assert(private.alphabet and private.paths and private.loadFrame)
+	for _, fontType in pairs(TYPE) do
+		local path = overrides[private.alphabet] and overrides[private.alphabet][fontType] or DEFAULT_FONT_PATH[private.alphabet]
+		assert(path)
+		private.paths[fontType] = private.QueueFontLoad(path)
+	end
+end
+
 ---Create an font object from a path and height.
 ---@param fontType EnumValue The font type (FontObject.TYPE)
 ---@param size number The size of the font in pixels

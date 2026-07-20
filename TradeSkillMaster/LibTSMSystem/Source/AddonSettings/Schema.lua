@@ -158,7 +158,8 @@ function Schema.Get()
 	-- [130/131] updated global.auctionUIContext.{auctioningAuctionScrollingTable,myAuctionsScrollingTable,shoppingAuctionScrollingTable}, factionrealm.auctioningOptions.whitelist
 	-- [132] removed internalData.reagentBankQuantity
 	-- [133] updated global.auctionUIContext.{auctioningAuctionScrollingTable,myAuctionsScrollingTable,shoppingAuctionScrollingTable,sniperScrollingTable}, factionrealm.auctioningOptions.whitelist
-	return Settings.NewSchema(133, 10)
+	-- [134] added global.appearanceOptions.{fontFace,fontScale,itemIconSize}
+	return Settings.NewSchema(134, 10)
 		:EnterScope("global")
 			:EnterNamespace("debug")
 				:AddBoolean("chatLoggingEnabled", false, 19)
@@ -179,6 +180,9 @@ function Schema.Get()
 				:AddBoolean("showTotalMoney", false, 95)
 				:AddString("colorSet", "midnight", 75)
 				:AddTable("customColorSet", {}, 98)
+				:AddString("fontFace", "", 134)
+				:AddNumber("fontScale", 1, 134)
+				:AddNumber("itemIconSize", 12, 134)
 			:LeaveNamespace()
 			:EnterNamespace("auctionUIContext")
 				:AddTable("frame", { width = 830, height = 587, centerX = -300, centerY = 100, scale = 1, page = 1 }, 55)

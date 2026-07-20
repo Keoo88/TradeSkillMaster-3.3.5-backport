@@ -103,6 +103,11 @@ function Util.OnInitialize(settingsDB)
 	private.settings = settingsDB:NewView()
 		:AddKey("global", "appearanceOptions", "colorSet")
 		:AddKey("global", "appearanceOptions", "customColorSet")
+		:AddKey("global", "appearanceOptions", "fontFace")
+		:AddKey("global", "appearanceOptions", "fontScale")
+		:AddKey("global", "appearanceOptions", "itemIconSize")
+
+	Theme.ApplyAppearanceFonts(private.settings.fontFace, private.settings.fontScale, private.settings.itemIconSize)
 
 	-- register built-in themes
 	local foundCurrentColorSet = false
