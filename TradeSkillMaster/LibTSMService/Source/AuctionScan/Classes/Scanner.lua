@@ -7,6 +7,7 @@
 local LibTSMService = select(2, ...).LibTSMService
 local Scanner = LibTSMService:Init("AuctionScan.Scanner")
 local ItemInfo = LibTSMService:Include("Item.ItemInfo")
+local ScanUtil = LibTSMService:Include("AuctionScan.Util")
 local DelayTimer = LibTSMService:From("LibTSMWoW"):IncludeClassType("DelayTimer")
 local AuctionHouse = LibTSMService:From("LibTSMWoW"):Include("API.AuctionHouse")
 local Event = LibTSMService:From("LibTSMWoW"):Include("Service.Event")
@@ -30,6 +31,8 @@ local private = {
 	useCachedData = nil,
 	retryCount = 0,
 	browseEmptyRetryCount = 0,
+	browseSendThrottleWaitCount = 0,
+	browseSendIsThrottleWait = false,
 	requestFuture = Future.New("AUCTION_SCANNER_FUTURE"),
 	requestResult = nil,
 	fsm = nil,
@@ -50,6 +53,8 @@ local SEARCH_AH_NOT_READY_RETRY_DELAY = 0.5
 local SEARCH_MISSING_INFO_RETRY_DELAY = 0.5
 local FUTURE_FAILED_RETRY_DELAY = 0.1
 local SORT_RETRY_DELAY = 0.5
+local BROWSE_SEND_THROTTLE_RETRY_DELAY = 0.1
+local BROWSE_SEND_THROTTLE_MAX_WAIT = 30
 -- 3.3.5 perf: бюджет времени (мс) на обработку browse-страницы за один кадр.
 -- Без него цикл ограничивался только числом pending-предметов: если данные
 -- всех лотов были в кэше, страница целиком (сотни/тысячи лотов на ядрах с
@@ -107,6 +112,8 @@ Scanner:OnModuleLoad(function()
 				private.callback = nil
 				private.retryCount = 0
 				private.browseEmptyRetryCount = 0
+				private.browseSendThrottleWaitCount = 0
+				private.browseSendIsThrottleWait = false
 				private.retryTimer:Cancel()
 				if private.pendingFuture then
 					private.pendingFuture:Cancel()
@@ -168,6 +175,10 @@ Scanner:OnModuleLoad(function()
 		)
 		:AddState(FSM.NewState("ST_BROWSE_SEND")
 			:SetOnEnter(function()
+				if private.MaybeWaitForBrowseSendThrottle() then
+					return
+				end
+				private.browseSendIsThrottleWait = false
 				private.HandleAuctionHouseWrapperResult(private.query:_SendWowQuery())
 			end)
 			:AddTransition("ST_BROWSE_SEND")
@@ -234,9 +245,15 @@ Scanner:OnModuleLoad(function()
 			:SetOnEnter(function(_, isRetry)
 				if private.query:_BrowseIsDone(isRetry) then
 					return "ST_BROWSE_CHECKING"
-				else
-					private.HandleAuctionHouseWrapperResult(private.query:_BrowseRequestMore(isRetry))
 				end
+				if private.MaybeWaitForBrowseSendThrottle() then
+					return
+				end
+				if private.browseSendIsThrottleWait then
+					isRetry = false
+					private.browseSendIsThrottleWait = false
+				end
+				private.HandleAuctionHouseWrapperResult(private.query:_BrowseRequestMore(isRetry))
 			end)
 			:AddTransition("ST_BROWSE_REQUEST_MORE")
 			:AddTransition("ST_BROWSE_CHECKING")
@@ -255,6 +272,9 @@ Scanner:OnModuleLoad(function()
 				return "ST_BROWSE_CHECKING"
 			end)
 			:AddEvent("EV_RETRY", function()
+				if private.browseSendIsThrottleWait then
+					return "ST_BROWSE_REQUEST_MORE"
+				end
 				return "ST_BROWSE_REQUEST_MORE", true
 			end)
 			:AddEventTransition("EV_CANCEL", "ST_CANCELING")
@@ -541,6 +561,22 @@ function private.RetryHandler()
 	private.fsm:SetLoggingEnabled(true)
 end
 
+---Returns true when a classic browse send must wait for CanSendAuctionQuery().
+---@return boolean
+function private.MaybeWaitForBrowseSendThrottle()
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		return false
+	end
+	if private.browseSendThrottleWaitCount < BROWSE_SEND_THROTTLE_MAX_WAIT and not AuctionHouse.CanSendQuery() then
+		private.browseSendThrottleWaitCount = private.browseSendThrottleWaitCount + 1
+		private.browseSendIsThrottleWait = true
+		private.retryTimer:RunForTime(BROWSE_SEND_THROTTLE_RETRY_DELAY)
+		return true
+	end
+	private.browseSendThrottleWaitCount = 0
+	return false
+end
+
 function private.RequestDoneHandler()
 	local result = private.requestResult
 	private.requestResult = nil
@@ -580,7 +616,11 @@ function private.HandleRequestDone(result)
 	-- и ИСЧЕЗАЕТ из списка (само-отравление рынка по таймеру рескана). Полные
 	-- сканы и поиск по одному предмету (без _specifiedPage/_accumulate) пишутся
 	-- как раньше.
-	local isPartialScan = private.query and (private.query._accumulate or private.query._specifiedPage ~= nil)
+	local isPartialScan = private.query and (
+		private.query._accumulate
+		or private.query._specifiedPage ~= nil
+		or private.query._browseEndedEarly
+	)
 	if result and private.query and not isPartialScan and _G.TSM_AuctionDB_RecordScan then
 		local ok, err = pcall(private.RecordScanResults, private.query)
 		if not ok and _G.TSMDebugDB then
@@ -606,6 +646,7 @@ function private.RecordScanResults(query)
 		for _, subRow in row:SubRowIterator() do
 			if subRow.HasRawData and subRow:HasRawData() then
 				local _, itemBuyout = subRow:GetBuyouts()
+				local _, numAuctions = subRow:GetQuantities()
 				if itemBuyout and itemBuyout > 0 then
 					if not minBuyout or itemBuyout < minBuyout then
 						minBuyout = itemBuyout
@@ -614,18 +655,21 @@ function private.RecordScanResults(query)
 					-- единицу в стаке: иначе один дешёвый стак 20 шт даёт 20
 					-- точек и полностью захватывает нижний перцентиль выборки,
 					-- отравляя marketValue
-					prices[#prices + 1] = itemBuyout
+					for _ = 1, numAuctions do
+						prices[#prices + 1] = itemBuyout
+					end
 				end
 				-- na = кол-во аукционов (лотов), а не единиц товара.
 				-- Тултип "N auctions" должен означать именно лоты.
-				auctionCount = auctionCount + 1
+				auctionCount = auctionCount + numAuctions
 			end
 		end
 		if minBuyout and minBuyout > 0 then
 			scanData[baseItemString] = {
 				mb = minBuyout,
-				mv = private.CalcMarketValue(prices) or minBuyout,
+				mv = ScanUtil.CalcMarketValue(prices) or minBuyout,
 				na = auctionCount > 0 and auctionCount or nil,
+				nsamples = #prices,
 			}
 			count = count + 1
 		end
@@ -649,64 +693,6 @@ function private.RecordScanResults(query)
 			table.insert(log, string.format("[%s] RecordScan items=%d", date("%H:%M:%S"), count))
 		end
 	end
-end
-
--- Эталонная формула AuctionDB marketValue (TSM), одна точка = один аукцион:
---   1. sort ascending
---   2. берём нижние 30% аукционов, но первые 15% ЗАЩИЩЕНЫ от jump-cutoff
---      (иначе один дешёвый троллинг-лот с cut=1 становится всем MV)
---   3. jump-cutoff: после защищённых 15%, если price[i] > price[i-1]*1.2,
---      отбрасываем хвост
---   4. mean + stddev по оставшимся, отбрасываем точки дальше 1.5σ
---   5. mean остатка
--- Возвращает nil если входной список пустой.
-function private.CalcMarketValue(prices)
-	local n = #prices
-	if n == 0 then return nil end
-	if n == 1 then return prices[1] end
-	table.sort(prices)
-	-- шаг 2-3: нижние 30% (минимум 2 точки), защита первых 15% от cutoff
-	local protectedIdx = max(2, ceil(n * 0.15))
-	local maxIdx = max(protectedIdx, ceil(n * 0.3))
-	local numKept = 0
-	for i = 1, n do
-		if i <= protectedIdx then
-			numKept = i
-		elseif i > maxIdx or prices[i] > prices[i - 1] * 1.2 then
-			break
-		else
-			numKept = i
-		end
-	end
-	-- шаг 4: фильтр стандартного отклонения (±1.5σ от среднего)
-	local sum = 0
-	for i = 1, numKept do
-		sum = sum + prices[i]
-	end
-	local mean = sum / numKept
-	if numKept < 3 then
-		return floor(mean + 0.5)
-	end
-	local variance = 0
-	for i = 1, numKept do
-		local d = prices[i] - mean
-		variance = variance + d * d
-	end
-	local stdDev = math.sqrt(variance / numKept)
-	local limitLo = mean - 1.5 * stdDev
-	local limitHi = mean + 1.5 * stdDev
-	-- шаг 5: среднее точек внутри 1.5σ
-	local fSum, fCnt = 0, 0
-	for i = 1, numKept do
-		if prices[i] >= limitLo and prices[i] <= limitHi then
-			fSum = fSum + prices[i]
-			fCnt = fCnt + 1
-		end
-	end
-	if fCnt == 0 then
-		return floor(mean + 0.5)
-	end
-	return floor(fSum / fCnt + 0.5)
 end
 
 function private.CheckBrowseResults()
@@ -850,6 +836,7 @@ function private.ProcessBrowseResultClassic(index)
 		seller = "?"
 	end
 	private.query:_ProcessBrowseResult(baseItemString, itemLink)
+	private.query:_MarkDirtyRow(baseItemString)
 	local row = private.query:_GetBrowseResults(baseItemString)
 	row:PopulateSubRows(private.browseId, index, itemLink)
 	cs.added = cs.added + 1
