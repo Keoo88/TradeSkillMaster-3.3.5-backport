@@ -566,16 +566,23 @@ end
 function private.DeleteMailOnClick(button)
 	local _, money, _, itemCount = InboxAPI.GetHeaderInfo(private.selectedMail)
 	if InboxItemCanDelete(private.selectedMail) then
-		if itemCount and itemCount > 0 then
+		if (itemCount and itemCount > 0) or (money and money > 0) then
+			button:GetBaseElement():ShowConfirmationDialog(
+				L["Delete Mail?"],
+				L["This mail still contains attachments or gold, which will be permanently lost. Delete it anyway?"],
+				private.ConfirmDeleteMail, button
+			)
 			return
-		elseif money and money > 0 then
-			return
-		else
-			DeleteInboxItem(private.selectedMail)
 		end
+		DeleteInboxItem(private.selectedMail)
 	else
 		ReturnInboxItem(private.selectedMail)
 	end
+	button:GetElement("__parent.__parent.__parent"):SetPath("mails", true)
+end
+
+function private.ConfirmDeleteMail(button)
+	DeleteInboxItem(private.selectedMail)
 	button:GetElement("__parent.__parent.__parent"):SetPath("mails", true)
 end
 
@@ -621,11 +628,7 @@ function private.UpdateInboxItemsFrame(frame)
 
 	if InboxItemCanDelete(private.selectedMail) then
 		frame:GetElement("footer.return/send"):SetText(DELETE)
-		if (itemCount and itemCount > 0) or (money and money > 0) then
-			frame:GetElement("footer.return/send"):SetDisabled(true)
-		else
-			frame:GetElement("footer.return/send"):SetDisabled(false)
-		end
+		frame:GetElement("footer.return/send"):SetDisabled(false)
 	else
 		frame:GetElement("footer.return/send"):SetText(MAIL_RETURN)
 		frame:GetElement("footer.return/send"):SetDisabled(false)
