@@ -70,6 +70,7 @@ function AuctionQuery:__init()
 	self._items = {}
 	self._customFilters = {}
 	self._isBrowseDoneFunc = nil
+	self._browseEndedEarly = false
 	self._specifiedPage = nil
 	self._resolveSellers = false
 	self._callback = nil
@@ -87,6 +88,8 @@ function AuctionQuery:__init()
 	self._tPageQuerySent = nil
 	self._lastPagePrinted = -1
 	self._lastPageFingerprint = nil
+	self._incrementalFilter = false
+	self._dirtyRows = {}
 end
 
 function AuctionQuery:_Release()
@@ -115,6 +118,7 @@ function AuctionQuery:_Release()
 	wipe(self._items)
 	wipe(self._customFilters)
 	self._isBrowseDoneFunc = nil
+	self._browseEndedEarly = false
 	self._specifiedPage = nil
 	self._resolveSellers = false
 	self._callback = nil
@@ -135,6 +139,8 @@ function AuctionQuery:_Release()
 	self._tPageQuerySent = nil
 	self._lastPagePrinted = -1
 	self._lastPageFingerprint = nil
+	self._incrementalFilter = false
+	wipe(self._dirtyRows)
 end
 
 
@@ -357,6 +363,17 @@ function AuctionQuery:SetTraceTimings(tag)
 	return self
 end
 
+---Enables Classic incremental browse filtering (Gathering scans only).
+---@param incrementalFilter boolean
+---@return AuctionQuery
+function AuctionQuery:SetIncrementalFilter(incrementalFilter)
+	self._incrementalFilter = incrementalFilter and true or false
+	if not self._incrementalFilter then
+		wipe(self._dirtyRows)
+	end
+	return self
+end
+
 ---Sets a callback for the results of the query changing.
 ---@param callback fun(query: AuctionQuery, row?: AuctionRow)
 ---@return AuctionQuery
@@ -385,6 +402,11 @@ function AuctionQuery:Browse()
 		end
 		if TSMDBG and numSubRows > 0 then
 			TSMDBG.Log("Query", "Browse: cleared %d stale subRows from %d rows before new browse", numSubRows, numRows)
+		end
+		if self._incrementalFilter then
+			for baseItemString in pairs(self._browseResults) do
+				self._dirtyRows[baseItemString] = true
+			end
 		end
 	end
 
@@ -729,6 +751,7 @@ end
 function AuctionQuery:_BrowseIsDone(isRetry)
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
 		if self._isBrowseDoneFunc and self:_isBrowseDoneFunc() then
+			self._browseEndedEarly = true
 			return true
 		end
 		return AuctionHouse.HasFullBrowseResults()
@@ -747,6 +770,7 @@ function AuctionQuery:_BrowseIsDone(isRetry)
 			local specifiedPage = (self._specifiedPage == "FIRST" and 0) or (self._specifiedPage == "LAST" and numPages - 1) or self._specifiedPage
 			return self._page == specifiedPage
 		elseif self._isBrowseDoneFunc and self:_isBrowseDoneFunc() then
+			self._browseEndedEarly = true
 			return true
 		else
 			-- AUX-стиль: эта страница последняя, если на ней < 50 (или 0) аукционов
@@ -886,6 +910,18 @@ function AuctionQuery:_ClearStaleSubRows()
 	if TSMDBG then
 		TSMDBG.Log("Query", "_ClearStaleSubRows: cleared %d subRows from %d rows", numSubRows, numRows)
 	end
+	if self._incrementalFilter then
+		for baseItemString in pairs(self._browseResults) do
+			self._dirtyRows[baseItemString] = true
+		end
+	end
+end
+
+---@private
+function AuctionQuery:_MarkDirtyRow(baseItemString)
+	if self._incrementalFilter then
+		self._dirtyRows[baseItemString] = true
+	end
 end
 
 ---@private
@@ -908,7 +944,11 @@ function AuctionQuery:_FilterBrowseResults()
 	local numRemoved = 0
 	local numTotal = 0
 	local isClassic = not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE)
+	local useIncremental = isClassic and self._incrementalFilter
 	for baseItemString, row in pairs(self._browseResults) do
+		if useIncremental and not self._dirtyRows[baseItemString] then
+			-- Row untouched this page; subRows unchanged since last filter pass.
+		else
 		numTotal = numTotal + 1
 
 		local isFiltered = false
@@ -940,6 +980,10 @@ function AuctionQuery:_FilterBrowseResults()
 			self._browseResults[baseItemString] = nil
 			numRemoved = numRemoved + 1
 		end
+		end
+	end
+	if useIncremental then
+		wipe(self._dirtyRows)
 	end
 	TSMDBG.Log("Query", "_FilterBrowseResults total=%d removed=%d remaining=%d", numTotal, numRemoved, numTotal - numRemoved)
 	return numRemoved
