@@ -45,8 +45,8 @@ private.LOCAL_FIELDS = {
 	"minBuyout",         -- index 1  (mb)
 	"marketValueRecent", -- index 2  (mv  = DBRecent: сырой snapshot последнего скана)
 	"numAuctions",       -- index 3  (na)
-	"marketValue",       -- index 4  (mkt = DBMarket:     EMA, ~14-дневный)
-	"historical",        -- index 5  (hist = DBHistorical: EMA, ~60-дневный)
+	"marketValue",       -- index 4  (mkt = DBMarket:     15-day weighted daily avg)
+	"historical",        -- index 5  (hist = DBHistorical: 60-day avg of daily DBMarket)
 	"lastScan",          -- index 6  (ts  = время последнего скана per-item для тултипа)
 }
 
@@ -88,8 +88,7 @@ function AuctionDB.OnEnable()
 
 	-- 3.3.5: Load local scan data from TradeSkillMaster_AuctionDB addon
 	-- (separate SavedVariable file, written by Scanner.HandleRequestDone).
-	-- Schema v2: items[is] = {mb=N, mv=N, na=N, ts=N}
-	-- Schema v1: items[is] = N (minBuyout only) — handled via fallback.
+	-- Schema v4: items[is] = {mb, mv, na, ts, mkt, hist, snaps, mktRing, ...}
 	if _G.TSM_AuctionDB_GetRealmData and private.localHolder then
 		local localData = _G.TSM_AuctionDB_GetRealmData()
 		local count = 0
@@ -242,9 +241,8 @@ end
 function AuctionDB.RecordLocalScanResults(results)
 	if type(results) ~= "table" or not private.localHolder then return end
 	local count = 0
-	-- 3.3.5: TSM_AuctionDB_RecordScan вызывается ДО этой функции и аннотировал
-	-- каждую data-таблицу полями mkt/hist (DBMarket/DBHistorical EMA).
-	-- Читаем их прямо из data — не нужно перечитывать SavedVariable.
+	-- v4: TSM_AuctionDB_RecordScan annotates each data table with mkt/hist after
+	-- computing weighted DBMarket and 60-day DBHistorical from daily rings.
 	for itemString, data in pairs(results) do
 		itemString = ItemString.Get(itemString) or itemString
 		if type(data) == "table" then

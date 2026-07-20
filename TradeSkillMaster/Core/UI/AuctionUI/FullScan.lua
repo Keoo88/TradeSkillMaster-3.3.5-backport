@@ -17,6 +17,7 @@ local UIUtils = TSM.LibTSMUI:Include("Util.UIUtils")
 local Event = TSM.LibTSMWoW:Include("Service.Event")
 local DefaultUI = TSM.LibTSMWoW:Include("UI.DefaultUI")
 local ItemString = TSM.LibTSMTypes:Include("Item.ItemString")
+local ScanUtil = TSM.LibTSMService:Include("AuctionScan.Util")
 local L = TSM.Locale.GetTable()
 local private = {
 	frame = nil,
@@ -36,6 +37,7 @@ local private = {
 	retryPass = 0,
 	stats = nil, -- diagnostic counters
 	pageRetries = nil, -- map: page -> retryCount (для paged mode)
+	saveOnFinish = true,
 }
 
 local MAX_RETRY_PASSES = 3
@@ -309,14 +311,8 @@ end
 
 function private.AbortScan()
 	ChatMessage.PrintfUser(L["Scan aborted by user."])
-	private.scanState = "done"
-	private.UnregisterGetAll()
-	private.UnregisterPaged()
-	private.UnregisterStealthGetAll()
-	if private.throttlePollFrame then private.throttlePollFrame:Hide() end
-	if private.bypassPollFrame then private.bypassPollFrame:Hide() end
-	-- Освободить ресурсы, но сохранить то что собрали
-	private.FinishScan()
+	private.saveOnFinish = false
+	private.EndScan()
 end
 
 
@@ -342,6 +338,7 @@ function private.StartGetAllScan()
 	private.scanState = "querying"
 	private.mode = "getAll"
 	private.finished = false
+	private.saveOnFinish = true
 	private.startTime = GetTime()
 	private.totalAuctions = 0
 	private.scannedItems = 0
@@ -503,6 +500,7 @@ function private.StartPagedScanImpl()
 	private.scanState = "paged"
 	private.mode = "paged"
 	private.finished = false
+	private.saveOnFinish = true
 	private.currentPage = 0
 	private.totalAuctions = private.totalAuctions or 0
 	private.scannedItems = private.scannedItems or 0
@@ -530,7 +528,8 @@ end
 function private.QueryNextPage()
 	if private.scanState ~= "paged" then return end
 	if not DefaultUI.IsAuctionHouseVisible() then
-		private.FinishScan()
+		private.saveOnFinish = false
+		private.EndScan()
 		return
 	end
 
@@ -665,8 +664,11 @@ function private.OnPagedResult()
 				return
 			end
 			ChatMessage.PrintfUser(string.format(
-				"|cffffaa00[FullScan]|r page %d returned empty %d times - finishing scan early",
+				"|cffffaa00[FullScan]|r page %d returned empty %d times - aborting without save",
 				private.currentPage + 1, emptyRetries + 1))
+			private.saveOnFinish = false
+			private.EndScan()
+			return
 		end
 
 		private.pageMissingList = private.pageMissingList or {}
@@ -758,7 +760,7 @@ function private.AdvanceToNextPage(numBatch)
 	private.pageMissingList = nil
 
 	if private.currentPage >= private.totalPages or numBatch == 0 then
-		private.FinishScan()
+		private.EndScan()
 		return
 	end
 
@@ -905,14 +907,14 @@ end
 
 function private.StartRetryPass()
 	if not private.missingIndices or #private.missingIndices == 0 then
-		private.FinishScan()
+		private.EndScan()
 		return
 	end
 	if private.retryPass >= MAX_RETRY_PASSES then
 		if ChatMessage and ChatMessage.PrintfUser then
 			ChatMessage.PrintfUser(string.format(L["Skipped %d auctions after %d retries (item cache)."], #private.missingIndices, MAX_RETRY_PASSES))
 		end
-		private.FinishScan()
+		private.EndScan()
 		return
 	end
 
@@ -957,37 +959,38 @@ function private.UnregisterPaged()
 	end
 end
 
-function private.FinishScan()
+function private.EndScan()
 	-- Защита от двойного вызова
 	if private.finished then return end
 	private.finished = true
 
+	private.scanState = "done"
 	private.UnregisterGetAll()
 	private.UnregisterPaged()
 	private.UnregisterStealthGetAll()
 	private.StopAntiAfk()
+	if private.throttlePollFrame then private.throttlePollFrame:Hide() end
+	if private.bypassPollFrame then private.bypassPollFrame:Hide() end
 
+	local save = private.saveOnFinish ~= false
 	local records = {}
 	local recordCount = 0
-	for key, data in pairs(private.scanData or {}) do
-		-- Записываем только предметы с buyout (есть data.mb)
-		if data.mb and data.mb > 0 then
-			local mv = private.CalcMarketValue(data.prices) or data.mb
-			records[key] = { mb = data.mb, mv = mv, na = data.na }
-			recordCount = recordCount + 1
+	if save then
+		for key, data in pairs(private.scanData or {}) do
+			if data.mb and data.mb > 0 then
+				local mv = ScanUtil.CalcMarketValue(data.prices) or data.mb
+				records[key] = {
+					mb = data.mb,
+					mv = mv,
+					na = data.na,
+					nsamples = data.prices and #data.prices or nil,
+				}
+				recordCount = recordCount + 1
+			end
 		end
 	end
 
-	-- Диагностика
-	if private.stats then
-		local s = private.stats
-		-- [debug off] ChatMessage.PrintfUser(string.format(
-		-- 	"Scan diag: ok=%d, noLink=%d, noItemString=%d, bidOnly=%d, retryFound=%d, pageRetries=%d, dupPages=%d",
-		-- 	s.ok, s.noLink, s.noItemString, s.noBuyout, s.retryFound, s.pageRetries or 0, s.dupPages or 0
-		-- ))
-	end
-
-	if recordCount > 0 then
+	if save and recordCount > 0 then
 		if _G.TSM_AuctionDB_RecordScan then
 			_G.TSM_AuctionDB_RecordScan(records)
 		end
@@ -996,30 +999,31 @@ function private.FinishScan()
 		end
 	end
 
-	local elapsed = GetTime() - private.startTime
-	private.scanState = "done"
-	private.SafeUpdateUI(
-		string.format(L["Done! %d auctions, %d items in %.1fs (%s mode)"],
-			private.totalAuctions, recordCount, elapsed, private.mode or "?"),
-		1.0
-	)
-	ChatMessage.PrintfUser(string.format(
-		L["Full scan complete: %d auctions, %d items saved to local AuctionDB (%.1fs)"],
-		private.totalAuctions, recordCount, elapsed
-	))
+	local elapsed = GetTime() - (private.startTime or GetTime())
+	if save then
+		private.SafeUpdateUI(
+			string.format(L["Done! %d auctions, %d items in %.1fs (%s mode)"],
+				private.totalAuctions, recordCount, elapsed, private.mode or "?"),
+			1.0
+		)
+		ChatMessage.PrintfUser(string.format(
+			L["Full scan complete: %d auctions, %d items saved to local AuctionDB (%.1fs)"],
+			private.totalAuctions, recordCount, elapsed
+		))
+	else
+		private.SafeUpdateUI(L["Scan ended without saving."], 0)
+		ChatMessage.PrintfUser(L["Scan ended without saving to AuctionDB."])
+	end
 
 	C_Timer.After(3, function()
 		private.scanState = nil
 		private.scanData = nil
+		private.saveOnFinish = true
 		private.SafeUpdateUI(L["Idle"], 0)
 	end)
 end
 
 
-
--- ============================================================================
--- Safe UI Updates
--- ============================================================================
 
 function private.SafeUpdateUI(text, progress)
 	-- Весь UI update обёрнут в pcall: GetElement бросает error если child удалён,
@@ -1048,63 +1052,4 @@ function private.SafeUpdateUI(text, progress)
 		if slowBtn and slowBtn.SetDisabled then slowBtn:SetDisabled(active) end
 		if abortBtn and abortBtn.SetDisabled then abortBtn:SetDisabled(not active) end
 	end)
-end
-
-
-
--- ============================================================================
--- Market Value (TSM 2.x lite)
--- ============================================================================
-
--- Эталонная формула AuctionDB marketValue (TSM), одна точка = один аукцион:
---   1. sort ascending
---   2. нижние 30% аукционов, первые 15% защищены от jump-cutoff
---   3. jump-cutoff: после 15%, если price[i] > price[i-1]*1.2 — отброс хвоста
---   4. фильтр ±1.5σ от среднего
---   5. mean остатка
-function private.CalcMarketValue(prices)
-	if not prices then return nil end
-	local n = #prices
-	if n == 0 then return nil end
-	if n == 1 then return prices[1] end
-	table.sort(prices)
-	local protectedIdx = math.max(2, math.ceil(n * 0.15))
-	local maxIdx = math.max(protectedIdx, math.ceil(n * 0.3))
-	local numKept = 0
-	for i = 1, n do
-		if i <= protectedIdx then
-			numKept = i
-		elseif i > maxIdx or prices[i] > prices[i - 1] * 1.2 then
-			break
-		else
-			numKept = i
-		end
-	end
-	local sum = 0
-	for i = 1, numKept do
-		sum = sum + prices[i]
-	end
-	local mean = sum / numKept
-	if numKept < 3 then
-		return math.floor(mean + 0.5)
-	end
-	local variance = 0
-	for i = 1, numKept do
-		local d = prices[i] - mean
-		variance = variance + d * d
-	end
-	local stdDev = math.sqrt(variance / numKept)
-	local limitLo = mean - 1.5 * stdDev
-	local limitHi = mean + 1.5 * stdDev
-	local fSum, fCnt = 0, 0
-	for i = 1, numKept do
-		if prices[i] >= limitLo and prices[i] <= limitHi then
-			fSum = fSum + prices[i]
-			fCnt = fCnt + 1
-		end
-	end
-	if fCnt == 0 then
-		return math.floor(mean + 0.5)
-	end
-	return math.floor(fSum / fCnt + 0.5)
 end
