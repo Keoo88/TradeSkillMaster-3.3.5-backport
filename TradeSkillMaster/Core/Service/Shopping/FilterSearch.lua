@@ -34,6 +34,7 @@ local private = {
 	targetItem = {},
 	itemList = {},
 	generalMaxQuantity = {},
+	gatheringQuerySignatures = {},
 }
 local DISENCHANT_CLASS_ID_LOOKUP = {
 	[DisenchantData.ITEM_CLASSES.ARMOR] = Enum.ItemClass.Armor,
@@ -107,6 +108,7 @@ end
 
 function private.ScanThread(auctionScan, filterStr)
 	wipe(private.generalMaxQuantity)
+	wipe(private.gatheringQuerySignatures)
 	if not ClientInfo.IsVanillaClassic() and not ClientInfo.IsBCClassic() and not ClientInfo.IsWrathClassic() and filterStr == "" then
 		auctionScan:NewQuery()
 			:SetStr("")
@@ -136,9 +138,16 @@ function private.ScanThread(auctionScan, filterStr)
 			filterPart = strtrim(filterPart)
 			if filterPart ~= "" and itemFilter:ParseStr(filterPart) then
 				if itemFilter:GetCrafting() then
-					wipe(private.itemList)
 					local targetItem = private.GetConversionTargetItem(itemFilter:GetStr())
 					assert(targetItem)
+					local partSig = "craft:"..targetItem..":"..tostring(itemFilter:GetMaxQuantity())
+					if private.marketValueSource == "matprice" and private.gatheringQuerySignatures[partSig] then
+						-- Duplicate gathering filter for the same target; skip it.
+					else
+					if private.marketValueSource == "matprice" then
+						private.gatheringQuerySignatures[partSig] = true
+					end
+					wipe(private.itemList)
 					-- populate the list of items
 					private.targetItem[targetItem] = targetItem
 					tinsert(private.itemList, targetItem)
@@ -169,20 +178,35 @@ function private.ScanThread(auctionScan, filterStr)
 					end
 					auctionScan:AddResultsUpdateCallback(private.ResultsUpdated)
 					auctionScan:SetScript("OnQueryDone", private.OnQueryDone)
+					end
 				elseif itemFilter:GetDisenchant() then
-					local queryOffset = auctionScan:GetNumQueries()
 					local targetItem = private.GetConversionTargetItem(itemFilter:GetStr())
 					assert(targetItem)
+					local partSig = "de:"..targetItem..":"..tostring(itemFilter:GetMaxQuantity())
+					if private.marketValueSource == "matprice" and private.gatheringQuerySignatures[partSig] then
+						-- Duplicate gathering filter for the same target; skip it.
+					else
+					if private.marketValueSource == "matprice" then
+						private.gatheringQuerySignatures[partSig] = true
+					end
+					local queryOffset = auctionScan:GetNumQueries()
 					-- generate queries for groups of items that d/e into the target item
 					local data = Conversion.GetDisenchantData(targetItem)
+					local seenDESignatures = private.marketValueSource == "matprice" and {} or nil
 					for _, info in ipairs(data.sourceInfo) do
 						local classId = DISENCHANT_CLASS_ID_LOOKUP[info.class]
 						assert(classId)
-						auctionScan:NewQuery()
-							:SetLevelRange(data.minLevel, data.maxLevel)
-							:SetQualityRange(info.quality, info.quality)
-							:SetClass(classId)
-							:SetItemLevelRange(info.minItemLevel, info.maxItemLevel)
+						local rangeSig = format("de-range:%s:%d:%d:%d:%d", targetItem, classId, info.quality, info.minItemLevel, info.maxItemLevel)
+						if not seenDESignatures or not seenDESignatures[rangeSig] then
+							if seenDESignatures then
+								seenDESignatures[rangeSig] = true
+							end
+							auctionScan:NewQuery()
+								:SetLevelRange(data.minLevel, data.maxLevel)
+								:SetQualityRange(info.quality, info.quality)
+								:SetClass(classId)
+								:SetItemLevelRange(info.minItemLevel, info.maxItemLevel)
+						end
 					end
 					-- add a query for the target item itself
 					wipe(private.itemList)
@@ -207,51 +231,63 @@ function private.ScanThread(auctionScan, filterStr)
 					end
 					auctionScan:AddResultsUpdateCallback(private.ResultsUpdated)
 					auctionScan:SetScript("OnQueryDone", private.OnQueryDone)
+					end
 				else
-					local query = auctionScan:NewQuery()
+					local searchStr = itemFilter:GetStr()
+					local exactItemString = itemFilter:GetItem()
 					-- 3.3.5 backport: if the search string exactly matches a known item name,
 					-- convert it to an itemString and run a fast exact search instead of a
 					-- slow substring scan across all pages
-					local searchStr = itemFilter:GetStr()
-					local exactItemString = itemFilter:GetItem()
 					if not exactItemString and searchStr and searchStr ~= "" then
 						exactItemString = ItemInfo.ItemNameToItemString(searchStr)
 						if exactItemString == ItemString.GetUnknown() then
 							-- multiple distinct items share this name; can't do an exact item search
 							exactItemString = nil
 						end
+					end
+					local normalSig = private.GetNormalGatheringQuerySignature(itemFilter, exactItemString, searchStr)
+					if not (private.marketValueSource == "matprice" and private.gatheringQuerySignatures[normalSig]) then
+						if private.marketValueSource == "matprice" then
+							private.gatheringQuerySignatures[normalSig] = true
+						end
+						local query = auctionScan:NewQuery()
 						if exactItemString then
 							query:SetStr(searchStr, true)
 						else
 							query:SetStr(searchStr, itemFilter:GetExactOnly())
 						end
-					else
-						query:SetStr(searchStr, itemFilter:GetExactOnly())
+						query:SetQualityRange(itemFilter:GetMinQuality(), itemFilter:GetMaxQuality())
+						query:SetLevelRange(itemFilter:GetMinLevel(), itemFilter:GetMaxLevel())
+						query:SetItemLevelRange(itemFilter:GetMinItemLevel(), itemFilter:GetMaxItemLevel())
+						query:SetClass(itemFilter:GetClass(), itemFilter:GetSubClass(), itemFilter:GetInvSlotId())
+						query:SetUsable(itemFilter:GetUsableOnly())
+						query:SetUncollected(itemFilter:GetUncollected())
+						query:SetUpgrades(itemFilter:GetUpgrades())
+						query:SetPriceRange(itemFilter:GetMinPrice(), itemFilter:GetMaxPrice())
+						if exactItemString then
+							query:SetItems(exactItemString)
+						end
+						-- luacheck: globals CanIMogIt
+						if CanIMogIt and CanIMogIt.PlayerKnowsTransmog then
+							query:SetUnlearned(itemFilter:GetAddedKeyValue("unlearned"))
+						end
+						if CanIMogIt and CanIMogIt.CharacterCanLearnTransmog then
+							query:SetCanLearn(itemFilter:GetAddedKeyValue("canlearn"))
+						end
+						private.generalMaxQuantity[query] = itemFilter:GetMaxQuantity()
 					end
-					query:SetQualityRange(itemFilter:GetMinQuality(), itemFilter:GetMaxQuality())
-					query:SetLevelRange(itemFilter:GetMinLevel(), itemFilter:GetMaxLevel())
-					query:SetItemLevelRange(itemFilter:GetMinItemLevel(), itemFilter:GetMaxItemLevel())
-					query:SetClass(itemFilter:GetClass(), itemFilter:GetSubClass(), itemFilter:GetInvSlotId())
-					query:SetUsable(itemFilter:GetUsableOnly())
-					query:SetUncollected(itemFilter:GetUncollected())
-					query:SetUpgrades(itemFilter:GetUpgrades())
-					query:SetPriceRange(itemFilter:GetMinPrice(), itemFilter:GetMaxPrice())
-					if exactItemString then
-						query:SetItems(exactItemString)
-					end
-					-- luacheck: globals CanIMogIt
-					if CanIMogIt and CanIMogIt.PlayerKnowsTransmog then
-						query:SetUnlearned(itemFilter:GetAddedKeyValue("unlearned"))
-					end
-					if CanIMogIt and CanIMogIt.CharacterCanLearnTransmog then
-						query:SetCanLearn(itemFilter:GetAddedKeyValue("canlearn"))
-					end
-					private.generalMaxQuantity[query] = itemFilter:GetMaxQuantity()
 				end
 			end
 		end
 		if not private.isSpecial then
 			TSM.Shopping.SavedSearches.RecordFilterSearch(filterStr)
+		end
+	end
+
+	-- Gathering scans on Classic: filter only rows touched by the current page.
+	if private.marketValueSource == "matprice" and not ClientInfo.HasFeature(ClientInfo.FEATURES.C_AUCTION_HOUSE) then
+		for _, query in auctionScan:QueryIterator() do
+			query:SetIncrementalFilter(true)
 		end
 	end
 
@@ -469,6 +505,39 @@ function private.GetMaxQuantityQuery(itemString)
 		return
 	end
 	return itemQuery
+end
+
+---Builds a gathering dedup signature for a normal filter part, mirroring every
+---parameter applied when constructing the browse query.
+---@param itemFilter ItemFilter
+---@param exactItemString string?
+---@param searchStr string?
+---@return string
+function private.GetNormalGatheringQuerySignature(itemFilter, exactItemString, searchStr)
+	local identity = exactItemString or strlower(searchStr or "")
+	local exact = exactItemString and true or (itemFilter:GetExactOnly() and true or false)
+	local sig = format(
+		"normal:%s:exact%d:q%s-%s:l%s-%s:il%s-%s:c%s.%s.%s:u%d:unc%d:up%d:p%s-%s:x%s",
+		identity,
+		exact and 1 or 0,
+		tostring(itemFilter:GetMinQuality()), tostring(itemFilter:GetMaxQuality()),
+		tostring(itemFilter:GetMinLevel()), tostring(itemFilter:GetMaxLevel()),
+		tostring(itemFilter:GetMinItemLevel()), tostring(itemFilter:GetMaxItemLevel()),
+		tostring(itemFilter:GetClass()), tostring(itemFilter:GetSubClass()), tostring(itemFilter:GetInvSlotId()),
+		itemFilter:GetUsableOnly() and 1 or 0,
+		itemFilter:GetUncollected() and 1 or 0,
+		itemFilter:GetUpgrades() and 1 or 0,
+		tostring(itemFilter:GetMinPrice()), tostring(itemFilter:GetMaxPrice()),
+		tostring(itemFilter:GetMaxQuantity())
+	)
+	-- luacheck: globals CanIMogIt
+	if CanIMogIt and CanIMogIt.PlayerKnowsTransmog then
+		sig = sig..":unl"..(itemFilter:GetAddedKeyValue("unlearned") and 1 or 0)
+	end
+	if CanIMogIt and CanIMogIt.CharacterCanLearnTransmog then
+		sig = sig..":cl"..(itemFilter:GetAddedKeyValue("canlearn") and 1 or 0)
+	end
+	return sig
 end
 
 function private.GetConversionTargetItem(targetItemName)
