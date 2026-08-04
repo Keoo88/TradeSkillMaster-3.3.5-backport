@@ -267,7 +267,20 @@ function TabardFrame_Open()
 end
 
 function MailFrame_Show()
-	_G.MailFrame_OnEvent(_G["MailFrame"], "MAIL_SHOW")
+	-- Replay the native 3.3.5 MAIL_SHOW initialization without its OpenBackpack()
+	-- side effect. Bag replacement addons hook that global and may fail while the
+	-- TSM mailing FSM is restoring the default mail UI.
+	_G.ShowUIPanel(_G.MailFrame)
+	if not _G.MailFrame:IsShown() then
+		_G.CloseMail()
+		return
+	end
+	if _G.IsInGuild() and _G.GetNumGuildMembers() == 0 then
+		_G.GuildRoster()
+	end
+	_G.SendMailFrame_Update()
+	_G.MailFrameTab_OnClick(nil, 1)
+	_G.CheckInbox()
 end
 
 function MailFrame_Hide()

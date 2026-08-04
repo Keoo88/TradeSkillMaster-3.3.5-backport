@@ -9,6 +9,7 @@ local ErrorFrame = LibTSMUI:DefineClassType("ErrorFrame")
 local ErrorHandler = LibTSMUI:From("LibTSMService"):Include("Debug.ErrorHandler")
 local ReactiveState = LibTSMUI:From("LibTSMUtil"):Include("Reactive.Type.State")
 local String = LibTSMUI:From("LibTSMUtil"):Include("Lua.String")
+local ClientInfo = LibTSMUI:From("LibTSMWoW"):Include("Util.ClientInfo")
 local LibTSMClass = LibStub("LibTSMClass")
 local private = {}
 local STEPS_TEXT = "Steps leading up to the error:\n1) List\n2) Steps\n3) Here"
@@ -42,7 +43,8 @@ function ErrorFrame.__private:__init()
 	self._showingError = nil
 	self._details = nil
 
-	local frame = CreateFrame("Frame", nil, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+	local template = ClientInfo.IsRetail() and BackdropTemplateMixin and "BackdropTemplate" or nil
+	local frame = CreateFrame("Frame", nil, UIParent, template)
 	self._frame = frame
 	frame:Hide()
 	frame:SetWidth(500)

@@ -510,7 +510,8 @@ end
 ---@param parent? Frame The parent WoW UI frame
 ---@return FrameExtended
 function WidgetExtensions.CreateFrame(name, parent)
-	return private.WithExtension(CreateFrame("Frame", name, parent, BackdropTemplateMixin and "BackdropTemplate" or nil), FrameExtended)
+	local template = ClientInfo.IsRetail() and BackdropTemplateMixin and "BackdropTemplate" or nil
+	return private.WithExtension(CreateFrame("Frame", name, parent, template), FrameExtended)
 end
 
 ---Creates a scroll frame with extensions.
