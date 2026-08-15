@@ -297,8 +297,8 @@ function private.InitializeParts()
 		return
 	end
 	private.parts = {
-		ItemFilterPart.NewKeyMatch("usable"),
-		ItemFilterPart.NewKeyMatch("exact"),
+		ItemFilterPart.NewKeyMatch("usable", "可用"),
+		ItemFilterPart.NewKeyMatch("exact", "精准", "精确"),
 		ItemFilterPart.NewKeyMatch("crafting", "disenchant"),
 		ItemFilterPart.NewKeyMatch("disenchant", "crafting"),
 		ItemFilterPart.NewNumberMatch("maxQuantity", nil, "^x(%d+)$"),
@@ -328,15 +328,18 @@ function private.InitializeParts()
 			end),
 		ItemFilterPart.NewFunctionMatch("class", nil, ItemClass.GetClassIdFromClassString)
 			:SetEvalFunc(function(item, class)
-				return ItemInfo.GetClassId(item) == class
+				local classId = ItemInfo.GetClassId(item)
+				return not classId or classId == class
 			end),
 		ItemFilterPart.NewFunctionMatch("subClass", nil, ItemClass.GetSubClassIdFromSubClassString, "class")
 			:SetEvalFunc(function(item, subClass)
-				return ItemInfo.GetSubClassId(item) == subClass
+				local subClassId = ItemInfo.GetSubClassId(item)
+				return not subClassId or subClassId == subClass
 			end),
 		ItemFilterPart.NewFunctionMatch("invSlotId", nil, ItemClass.GetInventorySlotIdFromInventorySlotString)
 			:SetEvalFunc(function(item, invSlotId)
-				return ItemInfo.GetInvSlotId(item) == invSlotId
+				local invSlot = ItemInfo.GetInvSlotId(item)
+				return not invSlot or invSlot == invSlotId
 			end),
 		ItemFilterPart.NewFunctionMatch("minQuality", "maxQuality", private.ItemQualityToIndex)
 			:SetEvalFunc(function(item, minQuality, maxQuality)
@@ -409,7 +412,7 @@ function private.HandleFirstSymbol(symbol, data)
 		data.str = name
 		data.escapedStr = String.Escape(name)
 		data.minQuality = quality
-		data.maxQuality = quality
+		data.maxQuality = nil
 		data.minLevel = level
 		data.maxLevel = level
 		data.class = ItemInfo.GetClassId(symbol) or 0
@@ -432,11 +435,24 @@ function private.HandleSymbol(symbol, data)
 	return false, ItemFilter.ERROR.UNKNOWN_WORD, symbol
 end
 
+local QUALITY_ALIASES = {
+	["粗糙"] = 0, ["灰色"] = 0, ["灰装"] = 0, ["poor"] = 0,
+	["普通"] = 1, ["白色"] = 1, ["白装"] = 1, ["common"] = 1,
+	["优秀"] = 2, ["绿色"] = 2, ["绿装"] = 2, ["uncommon"] = 2,
+	["精良"] = 3, ["稀有"] = 3, ["罕见"] = 3, ["蓝色"] = 3, ["蓝装"] = 3, ["rare"] = 3,
+	["史诗"] = 4, ["紫色"] = 4, ["紫装"] = 4, ["epic"] = 4,
+	["传说"] = 5, ["橙色"] = 5, ["橙装"] = 5, ["legendary"] = 5,
+	["神器"] = 6, ["红色"] = 6, ["红装"] = 6, ["artifact"] = 6,
+	["传家宝"] = 7, ["金色"] = 7, ["heirloom"] = 7,
+}
+
 function private.ItemQualityToIndex(str)
+	str = strlower(str)
 	for i = 0, 7 do
-		local text =  _G["ITEM_QUALITY"..i.."_DESC"]
-		if strlower(str) == strlower(text) then
+		local text = _G["ITEM_QUALITY"..i.."_DESC"]
+		if text and str == strlower(text) then
 			return i
 		end
 	end
+	return QUALITY_ALIASES[str]
 end
