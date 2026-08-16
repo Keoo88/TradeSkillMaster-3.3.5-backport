@@ -27,6 +27,7 @@ local private = {
 	browseIsNoScan = false,
 	browseIndex = 1,
 	browsePendingIndexes = {},
+	browseSellerRetries = {},
 	searchRow = nil,
 	useCachedData = nil,
 	retryCount = 0,
@@ -44,7 +45,7 @@ local private = {
 	-- pipeline (printed for traced queries, e.g. DE scan)
 	classicStats = { seen = 0, noInfo = 0, noLink = 0, badLink = 0, nameSkip = 0, earlyReject = 0, added = 0 },
 }
-local BROWSE_MISSING_INFO_RETRY_DELAY = 0.5
+local BROWSE_MISSING_INFO_RETRY_DELAY = 0.05
 local BROWSE_EMPTY_RETRY_DELAY = 0.25
 local BROWSE_EMPTY_RETRY_MAX = 12
 local SEARCH_NOT_READY_RETRY_DELAY = 0.1
@@ -268,6 +269,7 @@ Scanner:OnModuleLoad(function()
 				else
 					private.browseIndex = 1
 					wipe(private.browsePendingIndexes)
+					wipe(private.browseSellerRetries)
 				end
 				return "ST_BROWSE_CHECKING"
 			end)
@@ -703,6 +705,7 @@ function private.CheckBrowseResults()
 			-- new scan starting: reset the diagnostics counters
 			local cs = private.classicStats
 			cs.seen, cs.noInfo, cs.noLink, cs.badLink, cs.nameSkip, cs.earlyReject, cs.added = 0, 0, 0, 0, 0, 0, 0
+			wipe(private.browseSellerRetries)
 		end
 		-- Some 3.3.5a cores briefly return an empty page right after a browse query.
 		-- Retry a few times instead of immediately showing an empty result set.
@@ -832,7 +835,13 @@ function private.ProcessBrowseResultClassic(index)
 		cs.earlyReject = cs.earlyReject + 1
 		return true
 	end
-	if not seller and private.resolveSellers then
+	if private.resolveSellers and (not seller or seller == "") then
+		local retries = (private.browseSellerRetries[index] or 0) + 1
+		private.browseSellerRetries[index] = retries
+		if retries <= 6 then
+			-- Wait for server NAME_QUERY_RESPONSE to resolve player name
+			return false
+		end
 		seller = "?"
 	end
 	private.query:_ProcessBrowseResult(baseItemString, itemLink)
