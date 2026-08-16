@@ -21,9 +21,15 @@ local OPERATION_TYPE = "Sniper"
 ---@param localizedName string The localized operation type name
 function SniperOperation.Load(localizedName)
 	local operationType = Operation.NewType(OPERATION_TYPE, localizedName, 1)
-		-- 3.3.5a: no region data, so the default uses DBMarket instead of DBRegionMarketAvg
-		-- (which would always be nil and leave Sniper non-functional out of the box).
-		:AddCustomStringSetting("belowPrice", "max(vendorsell, ifgt(DBMarket, 2000g, 0.8, ifgt(DBMarket, 500g, 0.7, ifgt(DBMarket, 100g, 0.6, ifgt(DBMarket, 25g, 0.5, ifgt(DBMarket, 5g, 0.4, 0.3))))) * DBMarket)")
+		-- 3.3.5a: Safe Tiered Anti-Scam Sniper Formula
+		-- 1. Arbitrage Floors: 1.1 * vendorsell (vendor profit), 0.85 * destroy (disenchant profit)
+		-- 2. Anti-Market-Manipulation: min(DBMarket, DBHistorical) to counter single-day fake inflation
+		-- 3. Quality-based Hard Caps (Anti-Trash/Anti-Zombie):
+		--    - Epic (quality >= 4): 65% market discount, capped at 1500g
+		--    - Rare (quality == 3): 30% market discount, capped at 200g
+		--    - Green (quality == 2): 10% market discount, capped at 15g (never pay hundreds of gold for junk greens)
+		--    - White/Poor (quality <= 1): capped at 2g (pure vendor/destroy arbitrage)
+		:AddCustomStringSetting("belowPrice", "max(1.1 * vendorsell, 0.85 * destroy, min(min(DBMarket, ifgt(DBHistorical, 0c, DBHistorical, DBMarket)) * ifgt(ItemQuality, 3, 0.65, ifgt(ItemQuality, 2, 0.30, 0.10)), ifgt(ItemQuality, 3, 1500g, ifgt(ItemQuality, 2, 200g, ifgt(ItemQuality, 1, 15g, 2g)))))")
 	Operation.RegisterType(operationType)
 end
 

@@ -61,6 +61,7 @@ function AuctionSubRow:__init()
 	self._texture = nil
 	self._sniperKept = false
 	self._sniperMaxPrice = nil
+	self._rawIndex = nil
 end
 
 function AuctionSubRow:_Acquire(resultRow)
@@ -274,6 +275,13 @@ function AuctionSubRow:GetListingInfo()
 	return self._timeLeft, self._auctionId, self._browseId
 end
 
+---Gets the page number from the initial scan (for fast direct jump).
+---@return number
+function AuctionSubRow:GetPage()
+	return self._page or 0
+end
+
+
 ---Gets the quantities.
 ---@return number quantity
 ---@return number numAuctions
@@ -287,6 +295,13 @@ end
 ---@return number numOwnerItems
 function AuctionSubRow:GetOwnerInfo()
 	assert(self:HasRawData())
+	if (self._ownerStr == "?" or not self._ownerStr) and self._rawIndex and (LibTSMService.IsVanillaClassic() or LibTSMService.IsBCClassic() or LibTSMService.IsWrathClassic()) then
+		local rawName, _, stackSize, _, _, _, _, _, buyout, _, _, liveSeller = GetAuctionItemInfo("list", self._rawIndex)
+		if rawName and liveSeller and liveSeller ~= "" and buyout == self._buyout and stackSize == self._quantity then
+			self._ownerStr = liveSeller
+			self._hasOwners = true
+		end
+	end
 	return self._ownerStr, self._numOwnerItems
 end
 
@@ -392,6 +407,24 @@ function AuctionSubRow:EqualsIndex(index, noSeller)
 	end
 
 	if TSMDBG then TSMDBG.Log("SubRow", "  SUCCESS: auction matched!") end
+	-- 3.3.5 bid update: sync live bid info from the matched AH lot so retrying a bid
+	-- uses the fresh currentBid + minIncrement instead of repeating the stale lower bid.
+	if bid and bid > 0 then
+		self._currentBid = bid
+	end
+	if minBid and minBid > 0 then
+		self._minBid = minBid
+	end
+	if minIncrement and minIncrement > 0 then
+		self._minIncrement = minIncrement
+	end
+	if isHighBidder ~= nil then
+		self._isHighBidder = isHighBidder and true or false
+	end
+	if seller and seller ~= "?" and (not self._ownerStr or self._ownerStr == "?") then
+		self._ownerStr = seller
+		self._hasOwners = true
+	end
 	return true
 end
 
@@ -442,10 +475,11 @@ end
 -- Private Class Methods
 -- ============================================================================
 
-function AuctionSubRow:_SetRawData(data, browseId, itemLink)
+function AuctionSubRow:_SetRawData(data, browseId, itemLink, page)
 	self._hash = nil
 	self._hashNoSeller = nil
 	self._browseId = browseId
+	self._page = page or 0
 	self._sniperKept = false
 	self._sniperMaxPrice = nil
 	if data then
@@ -465,6 +499,7 @@ function AuctionSubRow:_SetRawData(data, browseId, itemLink)
 			self._hasOwners = seller and true or false
 			self._numOwnerItems = 0
 			self._auctionId = 0
+			self._rawIndex = data
 		else
 			if self._resultRow:IsCommodity() then
 				local baseItemString = self._resultRow:GetBaseItemString()
@@ -529,5 +564,6 @@ function AuctionSubRow:_SetRawData(data, browseId, itemLink)
 		self._hasOwners = false
 		self._numOwnerItems = nil
 		self._auctionId = nil
+		self._rawIndex = nil
 	end
 end
