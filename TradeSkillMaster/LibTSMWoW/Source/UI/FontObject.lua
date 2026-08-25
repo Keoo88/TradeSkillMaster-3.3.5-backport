@@ -40,10 +40,24 @@ local ALPHABET_LOOKUP = {
 	zhTW = ALPHABET.CHINESE,
 	ruRU = ALPHABET.CYRILLIC,
 }
+local DEFAULT_FONT_PATH_BY_LOCALE = {
+	enUS = "Fonts\\FRIZQT__.ttf",
+	enGB = "Fonts\\FRIZQT__.ttf",
+	esES = "Fonts\\FRIZQT__.ttf",
+	esMX = "Fonts\\FRIZQT__.ttf",
+	deDE = "Fonts\\FRIZQT__.ttf",
+	frFR = "Fonts\\FRIZQT__.ttf",
+	itIT = "Fonts\\FRIZQT__.ttf",
+	ptBR = "Fonts\\FRIZQT__.ttf",
+	koKR = "Fonts\\2002.ttf",
+	zhCN = "Fonts\\ZYKai_T.ttf",
+	zhTW = "Fonts\\bLEI00D.ttf",
+	ruRU = "Fonts\\FRIZQT___CYR.ttf",
+}
 local DEFAULT_FONT_PATH = {
 	[ALPHABET.ROMAN] = "Fonts\\FRIZQT__.ttf",
 	[ALPHABET.KOREAN] = "Fonts\\2002.ttf",
-	[ALPHABET.CHINESE] = "Fonts\\ARKai_C.ttf",
+	[ALPHABET.CHINESE] = "Fonts\\ZYKai_T.ttf",
 	[ALPHABET.CYRILLIC] = "Fonts\\FRIZQT___CYR.ttf",
 }
 
@@ -56,7 +70,8 @@ local DEFAULT_FONT_PATH = {
 ---Loads font path data.
 ---@param overrides table<EnumValue,table<EnumValue,string>> Overrides by alphabet and type
 function FontObject.__static.LoadPaths(overrides)
-	private.alphabet = ALPHABET_LOOKUP[GetLocale()]
+	local locale = GetLocale()
+	private.alphabet = ALPHABET_LOOKUP[locale] or ALPHABET.ROMAN
 	assert(private.alphabet)
 
 	-- Create a frame to load fonts
@@ -67,13 +82,13 @@ function FontObject.__static.LoadPaths(overrides)
 
 	-- Collect all the paths and queue loading of the fonts
 	private.paths = {}
+	local defaultPath = DEFAULT_FONT_PATH_BY_LOCALE[locale] or DEFAULT_FONT_PATH[private.alphabet]
 	for _, fontType in pairs(TYPE) do
-		local path = overrides[private.alphabet] and overrides[private.alphabet][fontType] or DEFAULT_FONT_PATH[private.alphabet]
+		local path = overrides[private.alphabet] and overrides[private.alphabet][fontType] or defaultPath
 		assert(path)
-		-- QueueFontLoad returns the font path that actually loaded; on 3.3.5a
-		-- ruRU clients missing FRIZQT___CYR.ttf this falls back to the stock
-		-- Roman font so every font string gets a valid font. Otherwise SetText
-		-- on those font strings throws a hard "Font not set" error and crashes.
+		-- QueueFontLoad returns the font path that actually loaded.
+		-- If a font fails to load (e.g. ARKai_C.ttf missing on 3.3.5 zhCN, or FRIZQT___CYR.ttf missing on ruRU),
+		-- it falls back to a working font for the current client locale.
 		private.paths[fontType] = private.QueueFontLoad(path)
 	end
 end
@@ -82,8 +97,10 @@ end
 ---@param overrides table<EnumValue,table<EnumValue,string>> Overrides by alphabet and type
 function FontObject.__static.UpdatePaths(overrides)
 	assert(private.alphabet and private.paths and private.loadFrame)
+	local locale = GetLocale()
+	local defaultPath = DEFAULT_FONT_PATH_BY_LOCALE[locale] or DEFAULT_FONT_PATH[private.alphabet]
 	for _, fontType in pairs(TYPE) do
-		local path = overrides[private.alphabet] and overrides[private.alphabet][fontType] or DEFAULT_FONT_PATH[private.alphabet]
+		local path = overrides[private.alphabet] and overrides[private.alphabet][fontType] or defaultPath
 		assert(path)
 		private.paths[fontType] = private.QueueFontLoad(path)
 	end
@@ -131,9 +148,8 @@ end
 ---@return number
 ---@return 'OUTLINE'|'THICK'|'MONOCHROME'|nil
 function FontObject:GetWowFont()
-	if self._path == "Fonts\\ARKai_C.ttf" then
-		-- This font is a bit smaller than it should be, so increase it by 1
-		return self._path, self._size + 1, self._flags
+	if self._path == "Fonts\\ARKai_C.ttf" or self._path == "Fonts\\ZYKai_T.ttf" or self._path == "Fonts\\ZYHei.ttf" or self._path == "Fonts\\bLEI00D.ttf" or self._path == "Fonts\\bKAI00M.ttf" then
+		return self._path, self._size, self._flags
 	else
 		-- Wow renders other fonts slightly bigger than the designs would indicate, so decrease the height by 1
 		return self._path, self._size - 1, self._flags
@@ -162,17 +178,45 @@ function private.QueueFontLoad(path)
 	fontString:SetWidth(100)
 	fontString:SetHeight(6)
 	-- 3.3.5a: SetFont can fail (return false) when the requested font file is
-	-- missing on a client/locale (e.g. some ruRU clients lack FRIZQT___CYR.ttf).
-	-- Calling SetText on a font string with no font set throws a hard
-	-- "Font not set" error and crashes the UI, so fall back to the stock Roman
-	-- font and only set text once a font is actually applied. We also return the
-	-- path that actually loaded so callers store a usable font path for every
-	-- font string, not just this preload frame.
+	-- missing on a client/locale (e.g. ARKai_C.ttf on 3.3.5 zhCN, or FRIZQT___CYR.ttf on ruRU).
+	-- Calling SetText on a font string with no font set throws a hard "Font not set" error.
+	-- We fall back through candidate fonts for the current locale to ensure a font with
+	-- proper glyphs (Chinese/Cyrillic/Korean) is loaded instead of an ASCII-only font.
 	local resolvedPath = path
 	local fontSet = fontString:SetFont(path, 6, "")
 	if not fontSet then
-		resolvedPath = "Fonts\\FRIZQT__.ttf"
-		fontSet = fontString:SetFont(resolvedPath, 6, "")
+		local locale = GetLocale()
+		local candidates = {}
+		if locale == "zhCN" then
+			candidates = { "Fonts\\ZYKai_T.ttf", "Fonts\\ZYHei.ttf", "Fonts\\ZYKai_C.ttf", "Fonts\\ARKai_T.ttf", "Fonts\\ARKai_C.ttf" }
+		elseif locale == "zhTW" then
+			candidates = { "Fonts\\bLEI00D.ttf", "Fonts\\bKAI00M.ttf", "Fonts\\bHEI00M.ttf", "Fonts\\bHEI01B.ttf", "Fonts\\ARKai_T.ttf" }
+		elseif locale == "koKR" then
+			candidates = { "Fonts\\2002.ttf", "Fonts\\2002B.ttf", "Fonts\\K_Pagetext.TTF" }
+		elseif locale == "ruRU" then
+			candidates = { "Fonts\\FRIZQT___CYR.ttf", "Fonts\\NimrodMT.ttf", "Fonts\\FRIZQT__.ttf" }
+		else
+			candidates = { "Fonts\\FRIZQT__.ttf" }
+		end
+
+		local stockFont = nil
+		if GameFontNormal and GameFontNormal.GetFont then
+			stockFont = GameFontNormal:GetFont()
+		elseif ChatFontNormal and ChatFontNormal.GetFont then
+			stockFont = ChatFontNormal:GetFont()
+		end
+		if stockFont then
+			tinsert(candidates, stockFont)
+		end
+		tinsert(candidates, "Fonts\\FRIZQT__.ttf")
+
+		for _, candidate in ipairs(candidates) do
+			if candidate ~= path and fontString:SetFont(candidate, 6, "") then
+				resolvedPath = candidate
+				fontSet = true
+				break
+			end
+		end
 	end
 	if fontSet then
 		fontString:SetText("1")

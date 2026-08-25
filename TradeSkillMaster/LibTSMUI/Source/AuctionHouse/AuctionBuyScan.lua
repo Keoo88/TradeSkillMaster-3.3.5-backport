@@ -715,6 +715,9 @@ function AuctionBuyScan.__private:_ActionHandler(manager, state, action, ...)
 				state.numFound = min(#result, maxQuantity and Math.Ceil(maxQuantity / state.selectedAuction:GetQuantities()) or math.huge)
 				state.maxQuantity = maxQuantity and min(maxQuantity, state.numFound) or 1
 				state.defaultBuyQuantity = state.numFound
+				if state.auctionScrollTable then
+					state.auctionScrollTable:UpdateData()
+				end
 			else
 				local maxCommodity = state.selectedAuction:IsCommodity() and state.selectedAuction:GetResultRow():GetMaxQuantities()
 				local numCanBuy = min(maxCommodity or result, maxQuantity or math.huge)
