@@ -41,7 +41,7 @@ function FriendList.IsPopulated()
 		return false
 	end
 	for i = 1, num do
-		if not C_FriendList.GetFriendInfoByIndex(i) then
+		if not private.GetFriendInfoByIndex(i) then
 			return false
 		end
 	end
@@ -52,14 +52,14 @@ end
 ---@param character string The character name
 ---@return boolean
 function FriendList.IsFriend(character)
-	return C_FriendList.GetFriendInfo(character) and true or false
+	return private.GetFriendInfo(character) and true or false
 end
 
 ---Checks whether or not a friend is online.
 ---@param character string The character name
 ---@return boolean
 function FriendList.IsOnline(character)
-	local info = C_FriendList.GetFriendInfo(character)
+	local info = private.GetFriendInfo(character)
 	return info and info.connected or false
 end
 
@@ -68,7 +68,7 @@ end
 function FriendList.CanAdd(character)
 	if C_FriendList.GetNumFriends() == 50 then
 		return false
-	elseif not private.invalidCharacters[strlower(character)] then
+	elseif private.invalidCharacters[strlower(character)] then
 		return false
 	end
 	return true
@@ -105,8 +105,36 @@ function private.ChatMsgSystemEventHandler(_, msg)
 		for i, v in ipairs(private.addedFriends) do
 			if format(ERR_FRIEND_ADDED_S, v) == msg then
 				tremove(private.addedFriends, i)
-				private.invalidCharacters[strlower(v)] = true
+				private.invalidCharacters[strlower(v)] = nil
 			end
+		end
+	end
+end
+
+function private.GetFriendInfoByIndex(index)
+	local info, level, className, area, connected, status, notes, rafLinkType = C_FriendList.GetFriendInfoByIndex(index)
+	if type(info) == "table" then
+		return info
+	elseif not info then
+		return nil
+	end
+	return {
+		name = info,
+		level = level,
+		className = className,
+		area = area,
+		connected = connected and true or false,
+		status = status,
+		notes = notes,
+		rafLinkType = rafLinkType,
+	}
+end
+
+function private.GetFriendInfo(character)
+	for i = 1, C_FriendList.GetNumFriends() do
+		local info = private.GetFriendInfoByIndex(i)
+		if info and info.name and strlower(info.name) == strlower(character) then
+			return info
 		end
 	end
 end
@@ -116,9 +144,7 @@ function private.FriendListIterator(_, i)
 	if i > C_FriendList.GetNumFriends() then
 		return
 	end
-	local info = C_FriendList.GetFriendInfoByIndex(i)
-	-- 3.3.5: GetFriendInfoByIndex может вернуть info без name (offline-only entry).
-	-- Пропускаем — рекурсивно к следующему индексу.
+	local info = private.GetFriendInfoByIndex(i)
 	if not info or not info.name then
 		return private.FriendListIterator(nil, i)
 	end

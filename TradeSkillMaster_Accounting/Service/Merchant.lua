@@ -117,10 +117,12 @@ end
 function private.OnMerchantBuy(index, quantity)
 	local price, batchQuantity = MerchantAPI.GetItemInfo(index)
 	local itemString = ItemString.Get(MerchantAPI.GetItemLink(index))
-	if not itemString or not price or price <= 0 then
+	if not itemString or not price or price <= 0 or not batchQuantity or batchQuantity <= 0 then
 		return
 	end
-	quantity = quantity or batchQuantity
+	-- BuyMerchantItem's quantity is the number of merchant batches, while
+	-- GetMerchantItemInfo's quantity is the number of items in each batch.
+	quantity = (quantity or 1) * batchQuantity
 	local copper = Math.Round(price / batchQuantity)
 	TSM.Accounting.Transactions.InsertVendorBuy(itemString, quantity, copper)
 end

@@ -6,6 +6,7 @@
 
 local LibTSMWoW = select(2, ...).LibTSMWoW
 local SoundAlert = LibTSMWoW:Init("UI.SoundAlert")
+local ClientInfo = LibTSMWoW:Include("Util.ClientInfo")
 SoundAlert.NO_SOUND_KEY = "TSM_NO_SOUND" -- This can never change
 local private = {
 	keys = {},
@@ -60,12 +61,20 @@ function SoundAlert.Play(soundKey)
 	if soundKey == SoundAlert.NO_SOUND_KEY then
 		-- do nothing
 	elseif CUSTOM_KEYS[soundKey] then
-		PlaySoundFile(CUSTOM_KEYS[soundKey], "Master")
+		if ClientInfo.IsWrathClassic() then
+			PlaySoundFile(CUSTOM_KEYS[soundKey])
+		else
+			PlaySoundFile(CUSTOM_KEYS[soundKey], "Master")
+		end
 		if FlashClientIcon then
 			FlashClientIcon()
 		end
 	elseif KIT_IDS[soundKey] then
-		PlaySound(KIT_IDS[soundKey], "Master")
+		if ClientInfo.IsWrathClassic() then
+			PlaySound(soundKey)
+		else
+			PlaySound(KIT_IDS[soundKey], "Master")
+		end
 		if FlashClientIcon then
 			FlashClientIcon()
 		end

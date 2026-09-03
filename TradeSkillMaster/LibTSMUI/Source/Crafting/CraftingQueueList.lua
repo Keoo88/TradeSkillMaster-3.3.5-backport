@@ -33,7 +33,6 @@ local EDIT_TEXTURE = "iconPack.12x12/Edit"
 local DELETE_TEXTURE = "iconPack.12x12/Close/Default"
 local ATTENTION_TEXTURE = "iconPack.12x12/Attention"
 local ICON_SIZE = Theme.GetItemIconSize
-local CONCENTRATION_ICON = "Interface\\ICONS\\UI_Concentration"
 
 
 
@@ -432,7 +431,17 @@ function CraftingQueueList.__private:_GetNameTooltip(dataIndex)
 	end
 	local concentration = RecipeString.GetConcentration(recipeString)
 	if concentration then
-		tinsert(tooltipLines, "|T"..CONCENTRATION_ICON..":0|t "..PROFESSIONS_CRAFTING_STAT_CONCENTRATION)
+		--! WotLK fix: neither half of this line survived on 3.3.5a, and both failed
+		-- differently. PROFESSIONS_CRAFTING_STAT_CONCENTRATION is a retail GlobalString,
+		-- so the concatenation raised an error and took the whole queue tooltip with it;
+		-- the icon it drew was Interface\ICONS\UI_Concentration, which is ABSENT from the
+		-- client MPQs, so the |T...|t markup would have shown an empty square with no
+		-- error to point at it -- hence the icon (and its now-unused CONCENTRATION_ICON
+		-- constant) is gone rather than guarded. The branch itself is not dead code: the
+		-- concentration value comes out of the recipe string, so a group imported from a
+		-- retail TSM profile can still carry one, and this keeps that case readable.
+		local label = PROFESSIONS_CRAFTING_STAT_CONCENTRATION or "Concentration"
+		tinsert(tooltipLines, label)
 	end
 	local cooldown = Profession.GetRemainingCooldown(CraftString.FromRecipeString(recipeString))
 	if cooldown then

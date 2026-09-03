@@ -712,10 +712,16 @@ function AuctionQuery:_IsFiltered(row, isSubRow, itemKey)
 		return true
 	end
 	-- luacheck: globals CanIMogIt
-	if self._unlearned and CanIMogIt:PlayerKnowsTransmog(ItemInfo.GetLink(baseItemString)) then
+	--! WotLK fix: test CanIMogIt for existence, not just the filter flag. It is a
+	-- foreign transmog addon, and transmog itself does not exist on 3.3.5a, so the
+	-- addon is never installed here -- yet the only condition upstream puts in front of
+	-- the call is the filter's own flag. Turning either filter on therefore killed the
+	-- auction scan on "attempt to index global 'CanIMogIt' (a nil value)". With the
+	-- guard an absent addon makes the filter inert (nothing gets rejected) instead.
+	if self._unlearned and CanIMogIt and CanIMogIt:PlayerKnowsTransmog(ItemInfo.GetLink(baseItemString)) then
 		return true
 	end
-	if self._canLearn and not CanIMogIt:CharacterCanLearnTransmog(ItemInfo.GetLink(baseItemString)) then
+	if self._canLearn and CanIMogIt and not CanIMogIt:CharacterCanLearnTransmog(ItemInfo.GetLink(baseItemString)) then
 		return true
 	end
 	if itemBuyout and (itemBuyout < self._minPrice or itemBuyout > self._maxPrice) then

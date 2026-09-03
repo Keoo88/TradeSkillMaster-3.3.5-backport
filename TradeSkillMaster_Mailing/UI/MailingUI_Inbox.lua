@@ -638,7 +638,14 @@ function private.UpdateInboxItemsFrame(frame)
 	local mailType = InboxAPI.GetMailType(private.selectedMail)
 	if mailType == InboxAPI.MAIL_TYPE.BUY.AUCTION then
 		local itemName, playerName, bid, buyout = InboxAPI.GetInvoiceInfo(private.selectedMail)
-		playerName = playerName or AUCTION_HOUSE_MAIL_MULTIPLE_SELLERS
+		--! WotLK fix: fall back to UNKNOWN, not to AUCTION_HOUSE_MAIL_MULTIPLE_SELLERS.
+		-- That string is a retail GlobalString for commodity orders filled by several
+		-- sellers; it does not exist on 3.3.5a, so the fallback evaluated to nil and the
+		-- concatenation below killed the frame -- leaving the mail tab blank. A nil name
+		-- is a normal case on this client, not an edge one: Blizzard's own MailFrame.lua
+		-- guards the whole invoice panel with `if ( playerName ) then`. UNKNOWN is a
+		-- native GlobalString, so the client localizes it for free.
+		playerName = playerName or UNKNOWN
 		local purchaseType = bid == buyout and BUYOUT or HIGH_BIDDER
 		body = strjoin(
 			"\n",
@@ -649,7 +656,10 @@ function private.UpdateInboxItemsFrame(frame)
 		)
 	elseif mailType == InboxAPI.MAIL_TYPE.SALE.AUCTION then
 		local itemName, playerName, bid, buyout, deposit, consignment = InboxAPI.GetInvoiceInfo(private.selectedMail)
-		playerName = playerName or AUCTION_HOUSE_MAIL_MULTIPLE_BUYERS
+		--! WotLK fix: see the BUY.AUCTION branch above -- the retail "multiple buyers"
+		-- GlobalString is absent on 3.3.5a, so this fallback used to yield nil and the
+		-- concatenation killed the frame on an ordinary auction sale invoice.
+		playerName = playerName or UNKNOWN
 		local purchaseType = bid == buyout and BUYOUT or HIGH_BIDDER
 		body = strjoin(
 			"\n",
@@ -664,7 +674,9 @@ function private.UpdateInboxItemsFrame(frame)
 		)
 	elseif mailType == InboxAPI.MAIL_TYPE.OTHER.TEMP_INVOICE then
 		local itemName, playerName, bid, buyout, deposit, consignment, etaHour, etaMin = InboxAPI.GetInvoiceInfo(private.selectedMail)
-		playerName = playerName or AUCTION_HOUSE_MAIL_MULTIPLE_BUYERS
+		--! WotLK fix: same retail GlobalString as above, absent on 3.3.5a. This branch is
+		-- the "seller_temp_invoice" mail every seller gets before the gold arrives.
+		playerName = playerName or UNKNOWN
 		local purchaseType = bid == buyout and BUYOUT or HIGH_BIDDER
 		body = strjoin(
 			"\n",

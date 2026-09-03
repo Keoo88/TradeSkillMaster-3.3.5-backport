@@ -364,7 +364,14 @@ end
 function private.WarehousingDepositReagentsBtnOnClick()
 	if ClientInfo.IsRetail() then
 		C_Bank.AutoDepositItemsIntoBank(Enum.BankType.Character)
-	else
+	elseif DepositReagentBank then
+		--! WotLK fix: guard the call -- there is no reagent bank on 3.3.5a and no
+		-- DepositReagentBank global, so an unguarded call kills the frame. Today the
+		-- button is built with SetDisabled(not ClientInfo.IsRetail()), which reaches the
+		-- native Button:Disable() and swallows clicks, so this path is not reachable in
+		-- practice; the guard makes that safe to stop relying on, exactly like the
+		-- neighbouring Warbound handler already does. The button stays visible (greyed
+		-- out) as upstream intends on every non-retail client.
 		DepositReagentBank()
 	end
 end

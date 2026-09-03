@@ -144,7 +144,14 @@ function ShoppingPostDialogPriceView:Acquire()
 		:SetManager(self._childManager)
 		:AddChild(UIElements.New("Text", "desc")
 			:SetFont("BODY_BODY2")
-			:SetText((ClientInfo.HasFeature(ClientInfo.FEATURES.AH_STACKS) and AUCTION_STACK_SIZE or AUCTION_HOUSE_QUANTITY_LABEL)..":")
+			--! WotLK fix: use AUCTION_STACK_SIZE outright instead of picking between it
+			-- and AUCTION_HOUSE_QUANTITY_LABEL. The condition upstream switches on is
+			-- HasFeature(AH_STACKS), which is IsVanillaClassic() or IsBCClassic() or
+			-- IsWrathClassic() -- constant true on this client -- so the alternative was
+			-- never reachable, and it names a retail GlobalString that does not exist
+			-- here. Keeping it only left a dead read of a nil for every gate to explain
+			-- away; "Stack Size" is what this client's auction house calls the field.
+			:SetText(AUCTION_STACK_SIZE..":")
 		)
 		:AddChild(UIElements.New("Input", "input")
 			:SetWidth(62)

@@ -13,7 +13,6 @@ local Theme = TSM.LibTSMService:Include("UI.Theme")
 local TempTable = TSM.LibTSMUtil:Include("BaseType.TempTable")
 local CustomString = TSM.LibTSMTypes:Include("CustomString")
 local private = {}
-local CONCENTRATION_ICON = "Interface\\ICONS\\UI_Concentration"
 
 
 
@@ -106,7 +105,15 @@ function private.PopulateDetailedMatsLines(tooltip, itemString)
 		end
 	end
 	if (concentration or 0) > 0 then
-		tooltip:AddLine("|T"..CONCENTRATION_ICON..":0|t "..tooltip:ApplyValueColor(PROFESSIONS_CRAFTING_STAT_CONCENTRATION))
+		--! WotLK fix: drop the icon, guard the label. The icon was
+		-- Interface\ICONS\UI_Concentration, ABSENT from the client MPQs (an empty square,
+		-- nothing logged), and PROFESSIONS_CRAFTING_STAT_CONCENTRATION is a retail
+		-- GlobalString -- ApplyValueColor concatenates its argument
+		-- (Color:ColorText -> prefix..text.."|r"), so a nil label was a hard error that
+		-- killed the whole crafting tooltip section. Same treatment as CraftingQueueList
+		-- and CraftingMatList; the branch stays because concentration is parsed out of
+		-- the recipe string, so a group imported from retail TSM can still carry one.
+		tooltip:AddLine(tooltip:ApplyValueColor(PROFESSIONS_CRAFTING_STAT_CONCENTRATION or "Concentration"))
 	end
 	TempTable.Release(hasOptionalMat)
 	TempTable.Release(optionalMats)

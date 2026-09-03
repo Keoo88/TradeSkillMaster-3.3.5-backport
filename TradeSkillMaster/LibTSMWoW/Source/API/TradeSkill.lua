@@ -195,16 +195,21 @@ function TradeSkill.IsMidnightRecipe(spellId)
 end
 
 ---Returns whether or not the current trade skill is classic crafting.
+--! WotLK fix: always false on 3.3.5a -- the Craft UI and its whole API were
+-- removed from the client in 3.0.2, when Enchanting became an ordinary trade
+-- skill. Verified three ways: Wow.exe (build 12340) registers no Craft symbol at
+-- all while GetTradeSkillInfo/CloseTradeSkill are present, the 3.3.5a FrameXML
+-- sources contain no Craft frame and zero Craft references, and the API codex
+-- has no such names. The previous heuristic below returned true whenever
+-- GetTradeSkillLine() reported "UNKNOWN" -- which is exactly what a *closed*
+-- trade skill window reports -- so every caller then jumped into a branch
+-- calling GetCraftInfo/GetNumCrafts/DoCraft/GetCraft*: 13 nil-value frame kills
+-- in this file, on paths as ordinary as "what profession is open" and "craft one
+-- item". Callers use this purely to pick between the Craft and TradeSkill APIs,
+-- never as a "window is closed" proxy, so a constant false keeps them on the
+-- only API this client actually has.
 function TradeSkill.IsClassicCrafting()
-	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_TRADE_SKILL_UI) then
-		return false
-	end
-	local name, _, maxLevel = GetTradeSkillLine()
-	if name == "UNKNOWN" or maxLevel == 0 then
-		return true
-	else
-		return false
-	end
+	return false
 end
 
 ---Gets the name of the player who linked the current trade skill (for TYPE.LINKED).
@@ -231,8 +236,9 @@ end
 function TradeSkill.GetLink()
 	if not ClientInfo.HasFeature(ClientInfo.FEATURES.C_TRADE_SKILL_UI) then
 		-- 3.3.5 fix: the native GetTradeSkillListLink() global exists on WotLK
-		-- clients (except for classic crafting professions like Enchanting), so use
-		-- it instead of always returning nil (which broke profession link features)
+		-- clients, so use it instead of always returning nil (which broke
+		-- profession link features). Enchanting is not an exception here: it is a
+		-- plain trade skill since 3.0.2, see TradeSkill.IsClassicCrafting above.
 		if TradeSkill.IsClassicCrafting() or not GetTradeSkillListLink then
 			return nil
 		end
@@ -368,9 +374,11 @@ end
 ---@param index number The index of the craft
 function TradeSkill.SelectCraft(index)
 	if TradeSkill.IsClassicCrafting() then
-		-- On 3.3.5, classic crafting (Enchanting) doesn't have SelectCraft function
-		-- Recipe selection happens through UI interaction, not API
-		-- This is a no-op for compatibility
+		--! WotLK fix: unreachable on 3.3.5a, kept only as the shape of the branch.
+		-- It used to be reachable whenever the trade skill window was closed, and
+		-- then this function silently did nothing -- so the crafting queue selected
+		-- no recipe at all. The live path below uses SelectTradeSkill(), which this
+		-- client does have.
 		return
 	else
 		SelectTradeSkill(index)

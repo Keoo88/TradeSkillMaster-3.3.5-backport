@@ -74,7 +74,13 @@ end
 ---@param index number The index
 ---@return number
 function Merchant.GetNumCostItems(index)
-	return GetMerchantItemCostInfo(index)
+	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_MERCHANTFRAME) then
+		return GetMerchantItemCostInfo(index)
+	end
+	-- Interface 30300 returns honorPoints, arenaPoints, itemCount. The scanner
+	-- iterates item costs only, so use the third return rather than honorPoints.
+	local _, _, itemCount = GetMerchantItemCostInfo(index)
+	return itemCount or 0
 end
 
 ---Gets info about an extended cost item.

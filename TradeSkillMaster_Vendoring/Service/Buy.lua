@@ -19,5 +19,5 @@ function Buy.BuyItem(itemString, quantity)
 	if not index then
 		return
 	end
-	Vendor.BuyIndex(index, quantity)
+	Vendor.BuyIndex(index, quantity, itemString)
 end
