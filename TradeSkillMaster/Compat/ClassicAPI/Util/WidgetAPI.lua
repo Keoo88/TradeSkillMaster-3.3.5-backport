@@ -382,7 +382,11 @@ UIObject = {
 		SetTextToFit = function(Self, Text)
 			Self:SetWidth(0)
 			if ( Text ) then
-				Self:SetText(text)
+				--! WotLK fix: was `Self:SetText(text)` — lower case, i.e. a read of the global
+				--! `text` rather than of the parameter. On a clean client that is nil (the caption
+				--! is wiped); with any other addon holding that very common working name it is
+				--! their value. The parameter was already checked one line above.
+				Self:SetText(Text)
 			end
 		end,
 

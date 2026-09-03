@@ -71,7 +71,10 @@ local function ActionButton_HideOverlayGlow(self)
 end
 
 local function ActionButton_OverlayGlowOnUpdate(self, elapsed)
-	AnimateTexCoords(self.ants, 256, 256, 48, 48, 22, elapsed, 0.01)
+	--! WotLK fix: call the layer's private copy. Util/API.lua used to publish this as a
+	-- global named AnimateTexCoords, which overwrote the client's own function of that
+	-- name; it is private now, and this is its only caller.
+	Private.AnimateTexCoords(self.ants, 256, 256, 48, 48, 22, elapsed, 0.01)
 
 	--[[ Tsoukie: This doesn't exist on 3.3.5.
 	local cooldown = self:GetParent().cooldown 

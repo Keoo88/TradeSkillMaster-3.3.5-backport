@@ -26,7 +26,13 @@ end
 ---@return boolean loaded
 ---@return boolean loadable
 function Addon.GetInfo(nameOrIndex)
-	local name, _, _, loadable = C_AddOns.GetAddOnInfo(nameOrIndex)
+	--! WotLK fix: was the fourth return, which on 3.3.5a is `enabled`, not `loadable` (codex:
+	--! name, title, notes, enabled, loadable, reason, security). Addon.IsEnabled below reads that
+	--! same fourth return as enabled, so the file contradicted itself. The consumer is the error
+	--! report (LibTSMService/Source/Debug/ErrorHandler.lua): an enabled-but-unloadable addon was
+	--! listed as loadable, and a disabled one never made the list — the report kept quiet about
+	--! exactly the suspicious ones.
+	local name, _, _, _, loadable = C_AddOns.GetAddOnInfo(nameOrIndex)
 	loadable = loadable and true or false
 	local version = strtrim(C_AddOns.GetAddOnMetadata(name, "X-Curse-Packaged-Version") or C_AddOns.GetAddOnMetadata(name, "Version") or "")
 	local loaded = C_AddOns.IsAddOnLoaded(nameOrIndex)

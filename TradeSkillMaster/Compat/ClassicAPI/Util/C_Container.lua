@@ -10,7 +10,11 @@ local C_Container = C_Container or {}
 local Tooltip = Private.Tooltip
 
 function C_Container.GetContainerItemInfo(ContainerIndex, SlotIndex)
-	local Icon, Stack, Locked, Quality, Readable = GetContainerItemInfo(ContainerIndex, SlotIndex)
+	--! WotLK fix: the sixth native return, `lootable`, was being dropped and hasLoot hardcoded to
+	--! false (codex: texture, count, locked, quality, readable, lootable, link). That is a real
+	--! source on 3.3.5a — a container item such as a lockbox or a clam. `isFiltered` and
+	--! `hasNoValue` have no source on this client, so their false stays, deliberately.
+	local Icon, Stack, Locked, Quality, Readable, Lootable = GetContainerItemInfo(ContainerIndex, SlotIndex)
 
 	if ( Icon ) then
 		Tooltip:ClearLines()
@@ -23,7 +27,7 @@ function C_Container.GetContainerItemInfo(ContainerIndex, SlotIndex)
 			isLocked = Locked,
 			quality = Quality,
 			isReadable = Readable,
-			hasLoot = false,
+			hasLoot = Lootable and true or false,
 			hyperlink = C_Container.GetContainerItemLink(ContainerIndex, SlotIndex),
 			isFiltered = false,
 			hasNoValue = false,

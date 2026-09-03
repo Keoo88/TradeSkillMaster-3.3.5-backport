@@ -27,7 +27,18 @@ local FIRST_NUMBER_CAP = FIRST_NUMBER_CAP
 local SECOND_NUMBER_CAP = SECOND_NUMBER_CAP
 local LARGE_NUMBER_SEPERATOR = LARGE_NUMBER_SEPERATOR
 
-function AnimateTexCoords(Self, Width, Height, FrameW, FrameH, NumFrames, Elapsed, Throttle)
+--! WotLK fix: keep this optimized copy private instead of publishing it as a global.
+-- AnimateTexCoords is a live 3.3.5a function (FrameXML/UIParent.lua:2936), so the
+-- plain "function AnimateTexCoords(...)" here replaced Blizzard's own implementation
+-- for the entire UI -- the client's only caller is EyeTemplate_OnUpdate, the spinning
+-- eye on the minimap while queued in the Dungeon Finder, and it got a different
+-- animation than Blizzard wrote (this version floors numColumns, caches maxFrames on
+-- the first call and stores the timer under another field name). The addon must not
+-- take over a global it does not own. Nothing outside this layer calls it: the sole
+-- caller is Util/ActionButton.lua, which now goes through Private directly, and the
+-- eighth Throttle argument -- the reason this copy exists at all -- is exactly what
+-- that caller needs (0.01 instead of Blizzard's fixed 0.1).
+function Private.AnimateTexCoords(Self, Width, Height, FrameW, FrameH, NumFrames, Elapsed, Throttle)
 	-- This exists, we just optimize it.
 	Throttle = Throttle or 0.1
 

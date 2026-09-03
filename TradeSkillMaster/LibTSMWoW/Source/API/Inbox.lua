@@ -201,7 +201,11 @@ end
 ---@return string body
 ---@return boolean isTakeable
 function Inbox.GetText(index)
-	local body, _, _, isTakeable = GetInboxText(index)
+	--! WotLK fix: was the fourth return, which is isInvoice, not isTakeable (codex: bodyText,
+	--! texture, isTakeable, isInvoice). The consumer greys out the "Copy Letter" button
+	--! (TradeSkillMaster_Mailing/UI/MailingUI_Inbox.lua), so the two cases were swapped: grey on an
+	--! ordinary letter, active on an auction invoice.
+	local body, _, isTakeable = GetInboxText(index)
 	return body, isTakeable
 end
 

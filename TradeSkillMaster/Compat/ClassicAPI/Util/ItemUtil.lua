@@ -176,7 +176,13 @@ end
 
 function ItemMixin:GetCurrentItemLevel() -- requires item data to be loaded
 	if self:GetStaticBackingItem() then
-		return (GetDetailedItemLevelInfo(self:GetStaticBackingItem()))
+		--! WotLK fix: go through C_Item, like every other method of this mixin. The bare
+		-- GetDetailedItemLevelInfo global arrived in 7.x and does not exist on 3.3.5a, so
+		-- this was the one line in the file that would have thrown instead of returning a
+		-- level. C_Item.GetDetailedItemLevelInfo does exist here: Compat/WrathBootstrap.lua
+		-- fills it in (from GetItemInfo) for the whole addon, and unlike this layer that
+		-- file is never switched off by __TSM_ClassicAPI_SKIP.
+		return (C_Item.GetDetailedItemLevelInfo(self:GetStaticBackingItem()))
 	end
 
 	if not self:IsItemEmpty() then

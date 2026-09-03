@@ -416,12 +416,15 @@ function private.CheckSendMail(destination, currentSubject, ...)
 	-- (например quick-send с не-зарезолвенным recipient). InsertRecord
 	-- assert'ит otherPlayer не-nil, поэтому пропускаем запись без получателя.
 	local hasDest = destination and destination ~= ""
+	--! WotLK fix: the postage used to be computed as `mailCost - moneyAmount`, in both branches.
+	--! The two are different things and neither contains the other (codex: GetSendMailMoney gives
+	--! the attached amount, GetSendMailPrice the price of the letter — on 3.3.5a a flat 30 copper,
+	--! independent of what is attached). Subtracting made mailCost negative for any attachment
+	--! above 30 copper, i.e. almost always, and the guard below then wrote no postage record at
+	--! all. Money transfer and postage are two separate expenses, each with its own record.
 	if moneyAmount > 0 and hasDest then
 		-- Add a record for the money transfer
 		TSM.Accounting.Money.InsertMoneyTransferExpense(moneyAmount, destination)
-		mailCost = mailCost - moneyAmount
-	elseif moneyAmount > 0 then
-		mailCost = mailCost - moneyAmount
 	end
 	if mailCost and mailCost > 0 and hasDest then
 		TSM.Accounting.Money.InsertPostageExpense(mailCost, destination)

@@ -92,7 +92,14 @@ function C_Spell.GetSpellIDForSpellIdentifier(ID, BookType)
 			local Link, _ = GetSpellLink(ID) or ID
 			Tooltip:SetHyperlink(Link)
 		end
-		_, _, ID = Tooltip:GetSpell()
+		--! WotLK fix: pull the third return with select instead of two throwaway names.
+		-- The "_, _, ID = Tooltip:GetSpell()" this replaces wrote a global named _ twice
+		-- per call: the only local _ in this function is declared inside the else branch
+		-- above, so it is out of scope here. That is a stray global the addon does not own
+		-- and a real hazard -- another addon using _ as a scratch name gets it clobbered
+		-- mid-expression. GameTooltip:GetSpell returns exactly spellName, spellRank,
+		-- spellID on 3.3.5a, so the third value is the one wanted.
+		ID = select(3, Tooltip:GetSpell())
 	end
 
 	return ID

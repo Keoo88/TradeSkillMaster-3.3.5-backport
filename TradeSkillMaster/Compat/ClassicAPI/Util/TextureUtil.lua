@@ -83,28 +83,13 @@ function ClearClampedTextureRotation(texture)
 end
 
 
-function GetTexCoordsByGrid(xOffset, yOffset, textureWidth, textureHeight, gridWidth, gridHeight)
-    local widthPerGrid = gridWidth/textureWidth;
-    local heightPerGrid = gridHeight/textureHeight;
-    return (xOffset-1)*widthPerGrid, (xOffset)*widthPerGrid, (yOffset-1)*heightPerGrid, (yOffset)*heightPerGrid;
-end
-
-function GetTexCoordsForRole(role)
-    local textureHeight, textureWidth = 256, 256;
-    local roleHeight, roleWidth = 67, 67;
-
-    if ( role == "GUIDE" ) then
-        return GetTexCoordsByGrid(1, 1, textureWidth, textureHeight, roleWidth, roleHeight);
-    elseif ( role == "TANK" ) then
-        return GetTexCoordsByGrid(1, 2, textureWidth, textureHeight, roleWidth, roleHeight);
-    elseif ( role == "HEALER" ) then
-        return GetTexCoordsByGrid(2, 1, textureWidth, textureHeight, roleWidth, roleHeight);
-    elseif ( role == "DAMAGER" ) then
-        return GetTexCoordsByGrid(2, 2, textureWidth, textureHeight, roleWidth, roleHeight);
-    else
-        error("Unknown role: "..tostring(role));
-    end
-end
+--! WotLK fix: GetTexCoordsByGrid and GetTexCoordsForRole used to be re-defined here,
+-- and both are live 3.3.5a functions -- FrameXML/UIParent.lua:3554 and
+-- FrameXML/LFGFrame.lua:324 -- with bodies identical to the copies this file carried,
+-- down to the 256x256/67x67 role-icon grid. So the copies bought nothing and cost the
+-- one thing the addon must never do: they took over two globals it does not own, for
+-- the whole UI, at a point where the Dungeon Finder role icons already work. Removed
+-- rather than guarded; every caller (there are none of our own) gets Blizzard's.
 
 function CreateTextureMarkup(file, fileWidth, fileHeight, width, height, left, right, top, bottom, xOffset, yOffset)
     return ("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t"):format(
