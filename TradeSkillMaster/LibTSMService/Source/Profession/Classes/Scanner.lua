@@ -965,7 +965,9 @@ end
 
 function private.PopulateClassicSpellIdLookup()
 	assert(not ClientInfo.HasFeature(ClientInfo.FEATURES.C_TRADE_SKILL_UI))
-	assert(State.GetCurrentProfession() and TradeSkill.IsDataReady())
+	if not State.GetCurrentProfession() or not TradeSkill.IsDataReady() then
+		return
+	end
 	wipe(private.classicSpellIdLookup)
 	for i, name in TradeSkill.RecipeIterator() do
 		local hash = Hash.Calculate(name)
@@ -977,17 +979,22 @@ function private.PopulateClassicSpellIdLookup()
 			hash = Hash.Calculate(ItemString.Get(itemLink), hash)
 			hash = Hash.Calculate(quantity, hash)
 		end
+		if hash < 0 then
+			hash = abs(hash)
+		end
 		if private.classicSpellIdLookup[hash] then
 			local itemString, craftName = private.GetItemStringAndCraftName(CraftString.Get(hash))
 			local spellId = Scanner.GetClassicSpellId(hash)
-			local itemLink, indirectSpellId = TradeSkill.GetResult(spellId)
-			Log.Err("Hash already exists %d, %d, %d, %s, %s, %s, %s", hash, spellId, TradeSkill.GetIcon(spellId), craftName, itemLink, tostring(indirectSpellId), itemString)
-			for j = 1, TradeSkill.GetNumMats(spellId) do
-				local link, _, quantity = TradeSkill.GetMatInfo(spellId, nil, j)
-				Log.Err("Material %d: %s, %s, %d", j, link, ItemString.Get(link), quantity)
+			Log.Warn("Hash collision for %d (%s) with %s (%s)", i, name, tostring(itemString), tostring(craftName))
+			local collisionCount = 1
+			while private.classicSpellIdLookup[hash] do
+				hash = Hash.Calculate(i + collisionCount * 10000, hash)
+				if hash < 0 then
+					hash = abs(hash)
+				end
+				collisionCount = collisionCount + 1
 			end
 		end
-		assert(hash >= 0 and not private.classicSpellIdLookup[hash] and not private.classicSpellIdLookup[-i])
 		private.classicSpellIdLookup[hash] = i
 		private.classicSpellIdLookup[-i] = hash
 	end

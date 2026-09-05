@@ -158,7 +158,11 @@ function private.CreateFSM()
 		:AddState(FSM.NewState("ST_SHOWN")
 			:SetOnEnter(function()
 				local name, skillId = TradeSkill.GetName()
-				assert(name)
+				if not name then
+					Log.Warn("TradeSkill name is nil, ignoring show")
+					private.fsm:ProcessEvent("EV_TRADE_SKILL_CLOSE")
+					return
+				end
 				Log.Info("Showing profession: %s (%s)", name, tostring(skillId))
 				private.professionName = name
 				private.skillId = skillId
