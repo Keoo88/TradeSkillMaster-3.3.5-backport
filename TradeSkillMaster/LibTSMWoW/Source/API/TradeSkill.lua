@@ -255,7 +255,10 @@ function TradeSkill.GetName()
 		local info = C_TradeSkillUI.GetBaseProfessionInfo()
 		return info.parentProfessionName or info.professionName, info.profession
 	else
-		local name = TradeSkill.IsClassicCrafting() and GetCraftSkillLine(1) or GetTradeSkillLine()
+		local name = TradeSkill.IsClassicCrafting() and GetCraftSkillLine(1) or (GetTradeSkillLine and GetTradeSkillLine())
+		if name == "UNKNOWN" or name == "" then
+			name = nil
+		end
 		return name
 	end
 end
@@ -342,8 +345,8 @@ function TradeSkill.GetResult(spellId)
 		if LibTSMWoW.IsPandaClassic() then
 			itemLink = itemLink or GetTradeSkillRecipeLink(spellId)
 		end
-		local indirectSpellId = strmatch(itemLink, "enchant:(%d+)")
-		if not indirectSpellId then
+		local indirectSpellId = itemLink and strmatch(itemLink, "enchant:(%d+)") or nil
+		if not indirectSpellId and itemLink then
 			indirectResultId = strmatch(itemLink, "item:(%d+)") or strmatch(itemLink, "spell:(%d+)")
 		end
 		indirectSpellId = indirectSpellId and tonumber(indirectSpellId)
@@ -468,7 +471,7 @@ end
 ---Iterates over the available trade skill recipes (must be run to completion).
 ---@return fun(): number, string?, number?, EnumValue?, TradeSkillRecipeInfo? @Iterator with fields: `index`, `name`, `categoryId`, `difficulty`, `info`
 function TradeSkill.RecipeIterator()
-	assert(not next(private.iteratorContext))
+	wipe(private.iteratorContext)
 	if ClientInfo.HasFeature(ClientInfo.FEATURES.C_TRADE_SKILL_UI) then
 		assert(C_TradeSkillUI.GetFilteredRecipeIDs(private.iteratorContext) == private.iteratorContext)
 	else

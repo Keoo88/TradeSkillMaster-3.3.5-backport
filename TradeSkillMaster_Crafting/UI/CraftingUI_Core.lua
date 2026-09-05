@@ -243,7 +243,8 @@ function private.FSMCreate()
 			end)
 			:AddEvent("EV_TRADE_SKILL_SHOW", function(context)
 				Profession.SetScannerDisabled(private.settings.showDefault)
-				if CraftingUI.IsProfessionIgnored(TradeSkill.GetName()) then
+				local profName = TradeSkill.GetName()
+				if not profName or CraftingUI.IsProfessionIgnored(profName) then
 					return "ST_DEFAULT_OPEN", true
 				elseif private.settings.showDefault then
 					return "ST_DEFAULT_OPEN"
@@ -310,7 +311,8 @@ function private.FSMCreate()
 				return "ST_CLOSED"
 			end)
 			:AddEvent("EV_TRADE_SKILL_SHOW", function(context)
-				if CraftingUI.IsProfessionIgnored(TradeSkill.GetName()) then
+				local profName = TradeSkill.GetName()
+				if not profName or CraftingUI.IsProfessionIgnored(profName) then
 					return "ST_DEFAULT_OPEN", true
 				else
 					if private.settings.showDefault then
@@ -363,7 +365,8 @@ function private.FSMCreate()
 				return "ST_CLOSED"
 			end)
 			:AddEvent("EV_TRADE_SKILL_SHOW", function(context)
-				if CraftingUI.IsProfessionIgnored(TradeSkill.GetName()) then
+				local profName = TradeSkill.GetName()
+				if not profName or CraftingUI.IsProfessionIgnored(profName) then
 					return "ST_DEFAULT_OPEN", true
 				end
 				context.frame:GetElement("titleFrame.switchBtn"):Show()

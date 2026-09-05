@@ -56,10 +56,11 @@ end)
 function TempTable.Acquire(...)
 	local tbl = next(private.free)
 	if not tbl then
-		error("Could not acquire temp table")
+		tbl = {}
+	else
+		private.free[tbl] = nil
+		setmetatable(tbl, nil)
 	end
-	private.free[tbl] = nil
-	setmetatable(tbl, nil)
 	if private.debugLeaks then
 		private.state[tbl] = (DebugStack.GetLocation(2) or "?").." -> "..(DebugStack.GetLocation(3) or "?")
 	else
